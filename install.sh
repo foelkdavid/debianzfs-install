@@ -127,7 +127,8 @@ EOF
 	DEBIAN_FRONTEND=noninteractive apt-get update
 	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 		ca-certificates debootstrap gdisk dosfstools rsync inotify-tools \
-		util-linux kmod curl zfsutils-linux
+		util-linux kmod curl kbd console-setup keyboard-configuration \
+		x11-xkb-utils zfsutils-linux
 
 	if ! modprobe zfs >/dev/null 2>&1; then
 		note "ZFS module is not loaded; trying DKMS for the live kernel."
@@ -301,12 +302,42 @@ get_keymap() {
 
 apply_keymap() {
 	local keymap="$1"
+
 	if command -v loadkeys >/dev/null 2>&1 && loadkeys "$keymap" >/dev/null 2>&1; then
-		ok "Applied console keymap '$keymap' in the live environment"
-	else
-		note "Could not apply '$keymap' with loadkeys in this live environment."
-		note "It will still be configured for the installed Debian system."
+		ok "Applied console keymap '$keymap' with loadkeys"
+		return 0
 	fi
+
+	if command -v setupcon >/dev/null 2>&1; then
+		cat >/etc/default/keyboard <<EOF
+XKBMODEL="pc105"
+XKBLAYOUT="${keymap}"
+XKBVARIANT=""
+XKBOPTIONS=""
+BACKSPACE="guess"
+EOF
+		if setupcon -k --force >/dev/null 2>&1; then
+			ok "Applied console keymap '$keymap' with setupcon"
+			return 0
+		fi
+	fi
+
+	if command -v localectl >/dev/null 2>&1 && localectl set-keymap "$keymap" >/dev/null 2>&1; then
+		ok "Applied console keymap '$keymap' with localectl"
+		return 0
+	fi
+
+	if [ -n "${DISPLAY:-}" ] && command -v setxkbmap >/dev/null 2>&1 && setxkbmap "$keymap" >/dev/null 2>&1; then
+		ok "Applied X11 keymap '$keymap' with setxkbmap"
+		return 0
+	fi
+
+	if [ -n "${SSH_TTY:-}" ] || [ -n "${SSH_CONNECTION:-}" ]; then
+		note "This appears to be an SSH session; keymap changes must be made on the client side."
+	else
+		note "Could not apply '$keymap' in this live environment."
+	fi
+	note "It will still be configured for the installed Debian system."
 }
 
 confirm_menu() {
@@ -552,9 +583,10 @@ EOF
 
 	mount_chroot_filesystems
 	chroot_run apt-get update
-	apt_install_target linux-image-amd64 zfsutils-linux zfs-initramfs zfs-zed \
+	apt_install_target linux-image-amd64 linux-headers-amd64 dkms zfs-dkms \
+		zfsutils-linux zfs-initramfs zfs-zed \
 		sudo locales console-setup keyboard-configuration efibootmgr dosfstools \
-		rsync inotify-tools util-linux systemd-sysv
+		rsync inotify-tools util-linux kmod systemd-sysv
 	ok "Installed target packages"
 }
 
