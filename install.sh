@@ -272,8 +272,11 @@ get_timezone() {
 }
 
 validate_keymap() {
+	[[ "$1" =~ ^[A-Za-z][A-Za-z0-9_-]*$ ]] || return 1
 	loadkeys -q "$1" >/dev/null 2>&1 && return 0
-	find /usr/share/keymaps /usr/share/kbd/keymaps -type f \( -name "$1.map.gz" -o -name "$1.map" \) 2>/dev/null | grep -q .
+	find /usr/share/keymaps /usr/share/kbd/keymaps -type f \( -name "$1.map.gz" -o -name "$1.map" \) 2>/dev/null | grep -q . && return 0
+	local xkb_rules="/usr/share/X11/xkb/rules/base.lst"
+	[ -f "$xkb_rules" ] && awk '$1 == "!" && $2 == "layout" { in_layout=1; next } $1 == "!" { in_layout=0 } in_layout && $1 == key { found=1 } END { exit !found }' key="$1" "$xkb_rules"
 }
 
 get_keymap() {
