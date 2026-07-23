@@ -557,12 +557,18 @@ case "$1" in
 prereqs) prereqs; exit 0 ;;
 esac
 
-. /usr/share/initramfs-tools/hook-functions
-copy_file config /etc/zfs/zroot.key /etc/zfs/zroot.key
+mkdir -p "${DESTDIR}/etc/zfs"
+cp -p /etc/zfs/zroot.key "${DESTDIR}/etc/zfs/zroot.key"
+chmod 000 "${DESTDIR}/etc/zfs/zroot.key"
 EOF
 	chmod 755 /mnt/etc/initramfs-tools/hooks/zroot-key
-	chroot_run update-initramfs -u -k all
 	ok "Configured initramfs"
+}
+
+rebuild_initramfs() {
+	info "[Rebuilding initramfs]"
+	chroot_run update-initramfs -u -k all
+	ok "Rebuilt initramfs"
 }
 
 configure_system() {
@@ -724,8 +730,9 @@ partition_disks
 setup_zfs
 install_base_system
 configure_efi_partitions
-configure_initramfs
 configure_system
+configure_initramfs
+rebuild_initramfs
 setup_zfsbootmenu
 setup_swap
 setup_user
