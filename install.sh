@@ -37,47 +37,6 @@ check() {
 	fi
 }
 
-tail_window() {
-	local lines="$1" label="$2" log="/tmp/debianzfs-install-${label}.log" count_file="/tmp/debianzfs-install-${label}.count"
-	shift 2
-
-	rm -f "$count_file"
-	set +e
-	"$@" 2>&1 |
-		tee "$log" |
-		awk -v n="$lines" -v count_file="$count_file" '
-			{
-				shown = (count < n ? count : n)
-				for (i = 0; i < shown; i++) {
-					printf "\033[1A\033[2K"
-				}
-				buffer[count % n] = $0
-				count++
-				start = (count > n ? count - n : 0)
-				for (j = start; j < count; j++) {
-					print buffer[j % n]
-				}
-				fflush()
-			}
-			END {
-				print count > count_file
-			}
-		'
-	local rc=${PIPESTATUS[0]}
-	set -e
-	local count=0
-	[ -s "$count_file" ] && read -r count <"$count_file"
-	rm -f "$count_file"
-	local shown="$count"
-	[ "$shown" -gt "$lines" ] && shown="$lines"
-	[ "$shown" -lt 1 ] && shown=1
-	printf "\033[%dA\033[0J" "$shown"
-	if [ "$rc" -ne 0 ]; then
-		failhard "Command failed; see $log"
-	fi
-	return "$rc"
-}
-
 hostnamecheck() {
 	[ "${DEBIAN_CHECK_HOSTNAME}" = true ] || return 0
 
@@ -166,15 +125,15 @@ deb ${DEBIAN_MIRROR} ${DEBIAN_RELEASE}-updates ${DEBIAN_COMPONENTS}
 deb http://security.debian.org/debian-security ${DEBIAN_RELEASE}-security ${DEBIAN_COMPONENTS}
 EOF
 
-	tail_window 8 host-apt-update env DEBIAN_FRONTEND=noninteractive apt-get update
-	tail_window 8 host-apt-install env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+	DEBIAN_FRONTEND=noninteractive apt-get update
+	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 		ca-certificates debootstrap gdisk dosfstools rsync inotify-tools \
 		util-linux kmod curl kbd console-setup keyboard-configuration \
 		x11-xkb-utils openssl mokutil zfsutils-linux
 
 	if ! modprobe zfs >/dev/null 2>&1; then
 		note "ZFS module is not loaded; trying DKMS for the live kernel."
-		tail_window 8 host-zfs-dkms env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+		DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 			openssl mokutil dkms "linux-headers-$(uname -r)" zfs-dkms zfsutils-linux
 		modprobe zfs
 	fi
@@ -621,13 +580,13 @@ chroot_run() {
 }
 
 apt_install_target() {
-	tail_window 8 target-apt-install chroot_run apt-get install -y --no-install-recommends "$@"
+	chroot_run apt-get install -y --no-install-recommends "$@"
 }
 
 install_base_system() {
 	info "[Installing Debian base system]"
 	DEBIAN_ARCH="${DEBIAN_ARCH:-$(dpkg --print-architecture)}"
-	tail_window 10 debootstrap debootstrap --arch="$DEBIAN_ARCH" --components="${DEBIAN_COMPONENTS// /,}" "$DEBIAN_RELEASE" /mnt "$DEBIAN_MIRROR"
+	debootstrap --arch="$DEBIAN_ARCH" --components="${DEBIAN_COMPONENTS// /,}" "$DEBIAN_RELEASE" /mnt "$DEBIAN_MIRROR"
 	ok "Installed Debian base system"
 
 	mkdir -p /mnt/etc/apt/sources.list.d /mnt/etc/zfs /mnt/etc/initramfs-tools/conf.d /mnt/etc/initramfs-tools/hooks
@@ -642,7 +601,7 @@ deb http://security.debian.org/debian-security ${DEBIAN_RELEASE}-security ${DEBI
 EOF
 
 	mount_chroot_filesystems
-	tail_window 8 target-apt-update chroot_run apt-get update
+	chroot_run apt-get update
 	apt_install_target openssl mokutil
 	apt_install_target linux-image-amd64 linux-headers-amd64 dkms zfs-dkms \
 		zfsutils-linux zfs-initramfs zfs-zed \
@@ -677,7 +636,7 @@ EOF
 
 rebuild_initramfs() {
 	info "[Rebuilding initramfs]"
-	tail_window 8 initramfs chroot_run update-initramfs -u -k all
+	chroot_run update-initramfs -u -k all
 	ok "Rebuilt initramfs"
 }
 
@@ -702,8 +661,8 @@ XKBOPTIONS=""
 BACKSPACE="guess"
 EOF
 	sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /mnt/etc/locale.gen
-	tail_window 5 locale-gen chroot_run locale-gen
-	tail_window 5 update-locale chroot_run update-locale LANG=en_US.UTF-8 LANGUAGE=en_US:en
+	chroot_run locale-gen
+	chroot_run update-locale LANG=en_US.UTF-8 LANGUAGE=en_US:en
 	chroot_run zfs set org.zfsbootmenu:commandline="quiet" zroot/ROOT
 	ok "Configured hostname, timezone, keyboard, locale, and ZFSBootMenu property"
 }
@@ -757,7 +716,7 @@ configure_efi_partitions() {
 setup_zfsbootmenu() {
 	info "[Configuring ZFSBootMenu]"
 	mkdir -p /mnt/etc/zfsbootmenu /mnt/boot/efi/EFI/zbm /mnt/boot/efi/EFI/BOOT
-	tail_window 5 zfsbootmenu-download curl -fsSL https://get.zfsbootmenu.org/efi/release -o /mnt/boot/efi/EFI/zbm/vmlinuz.EFI
+	curl -fsSL https://get.zfsbootmenu.org/efi/release -o /mnt/boot/efi/EFI/zbm/vmlinuz.EFI
 	cp -f /mnt/boot/efi/EFI/zbm/vmlinuz.EFI /mnt/boot/efi/EFI/BOOT/BOOTX64.EFI
 	ok "Installed upstream ZFSBootMenu EFI binary"
 
