@@ -509,7 +509,11 @@ mount_chroot_filesystems() {
 }
 
 chroot_run() {
-	chroot /mnt /usr/bin/env DEBIAN_FRONTEND=noninteractive "$@"
+	chroot /mnt /usr/bin/env \
+		DEBIAN_FRONTEND=noninteractive \
+		LANG=C.UTF-8 \
+		LC_ALL=C.UTF-8 \
+		"$@"
 }
 
 apt_install_target() {
@@ -593,7 +597,7 @@ BACKSPACE="guess"
 EOF
 	sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /mnt/etc/locale.gen
 	chroot_run locale-gen
-	echo 'LANG=en_US.UTF-8' >/mnt/etc/default/locale
+	chroot_run update-locale LANG=en_US.UTF-8 LANGUAGE=en_US:en
 	chroot_run zfs set org.zfsbootmenu:commandline="quiet" zroot/ROOT
 	ok "Configured hostname, timezone, keyboard, locale, and ZFSBootMenu property"
 }
