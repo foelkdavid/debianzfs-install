@@ -32,8 +32,8 @@ The live environment must have:
 
 The installer enables the target Debian apt components in the live environment
 and installs its host-side requirements itself, including `debootstrap`, `gdisk`,
-`dosfstools`, `curl`, `kbd`, `console-setup`, `x11-xkb-utils`,
-`zfsutils-linux`, and a DKMS fallback for the ZFS kernel module.
+`dosfstools`, `curl`, `kbd`, `console-setup`, `x11-xkb-utils`, `openssl`,
+`mokutil`, `zfsutils-linux`, and a DKMS fallback for the ZFS kernel module.
 
 ## Usage
 

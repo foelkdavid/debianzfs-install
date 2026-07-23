@@ -128,12 +128,12 @@ EOF
 	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 		ca-certificates debootstrap gdisk dosfstools rsync inotify-tools \
 		util-linux kmod curl kbd console-setup keyboard-configuration \
-		x11-xkb-utils zfsutils-linux
+		x11-xkb-utils openssl mokutil zfsutils-linux
 
 	if ! modprobe zfs >/dev/null 2>&1; then
 		note "ZFS module is not loaded; trying DKMS for the live kernel."
 		DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-			dkms "linux-headers-$(uname -r)" zfs-dkms zfsutils-linux
+			openssl mokutil dkms "linux-headers-$(uname -r)" zfs-dkms zfsutils-linux
 		modprobe zfs
 	fi
 
@@ -583,6 +583,7 @@ EOF
 
 	mount_chroot_filesystems
 	chroot_run apt-get update
+	apt_install_target openssl mokutil
 	apt_install_target linux-image-amd64 linux-headers-amd64 dkms zfs-dkms \
 		zfsutils-linux zfs-initramfs zfs-zed \
 		sudo locales console-setup keyboard-configuration efibootmgr dosfstools \
