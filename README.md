@@ -8,7 +8,7 @@ Interactive Debian on ZFS installer with optional ZFS mirror support.
 - Boots through ZFSBootMenu.
 - Supports single-disk and mirrored ZFS layouts.
 - Creates one EFI system partition per disk in mirror mode and keeps the secondary ESP synced.
-- Creates swap partitions on the selected disk or disks.
+- Optionally creates swap partitions on the selected disk or disks.
 - Creates separate datasets for `/` and `/home`.
 - Installs native systemd services for ESP sync and automatic ZFS snapshots.
 
@@ -44,7 +44,7 @@ The installer prompts for:
 
 - Target disk.
 - Optional mirror disk.
-- Swap size in GB.
+- Swap size in GB, or `0`/`none` to skip swap.
 - Hostname.
 - Sudo user.
 - Timezone.
@@ -57,8 +57,8 @@ The installer prompts for:
 Each selected disk is partitioned as:
 
 1. 512 MiB EFI system partition.
-2. Swap partition with the selected size.
-3. Remaining space for ZFS.
+2. Swap partition with the selected size, unless swap is disabled.
+3. Remaining space for ZFS. If swap is disabled, ZFS uses partition 2.
 
 The pool and datasets are:
 

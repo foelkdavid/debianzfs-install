@@ -151,7 +151,7 @@ print_preconf_header() {
 	echo -e "  ZFS-Mirror?  -> [ ${Y}${DEBIAN_MIRROR_MODE:-}${NC} ]"
 	echo -e "  Disk1        -> [ ${Y}${DEBIAN_DISK1:-}${NC} ] ${DEBIAN_DISK1_SIZE:-}"
 	echo -e "  Disk2        -> [ ${Y}${DEBIAN_DISK2:-}${NC} ] ${DEBIAN_DISK2_SIZE:-}"
-	echo -e "  Swap(GB)     -> [ ${Y}${DEBIAN_SWAPSIZE:-}${NC} ] ${DEBIAN_MIRROR_MODE:+(per disk)}"
+	echo -e "  Swap(GB)     -> [ ${Y}${DEBIAN_SWAPSIZE:-}${NC} ] ${DEBIAN_MIRROR_MODE:+(per disk; 0 disables swap)}"
 	echo -e "  Hostname     -> [ ${Y}${DEBIAN_HOSTNAME:-}${NC} ]"
 	echo -e "  Sudo User    -> [ ${Y}${DEBIAN_SUDOUSER:-}${NC} ]"
 	echo -e "  Timezone     -> [ ${Y}${DEBIAN_TIMEZONE:-}${NC} ]"
@@ -206,14 +206,18 @@ mirror_decision() {
 
 get_swapsize() {
 	info "[Swap Configuration]"
-	note "In mirror mode, swap is created on both disks."
+	note "Enter 0 or none to skip swap entirely."
+	note "In mirror mode, swap is created on both disks when enabled."
 	echo "------------------------"
 	while true; do
 		read -rp "Enter swap size in GB: " DEBIAN_SWAPSIZE || true
-		if [[ "${DEBIAN_SWAPSIZE:-}" =~ ^[0-9]+$ ]] && [ "$DEBIAN_SWAPSIZE" -gt 0 ]; then
+		if [[ "${DEBIAN_SWAPSIZE:-}" =~ ^[0-9]+$ ]]; then
+			break
+		elif [[ "${DEBIAN_SWAPSIZE,,}" == none ]]; then
+			DEBIAN_SWAPSIZE=0
 			break
 		fi
-		failhard "Invalid input. Please enter a positive integer."
+		failhard "Invalid input. Please enter a non-negative integer or none."
 		sleep 1
 		echo -ne "\033[2A\033[0J"
 	done
@@ -343,8 +347,9 @@ set_zfs_vars() {
 	ok "BOOT_DEVICE_1 set to $BOOT_DEVICE_1"
 
 	export POOL_DISK_1="$DEBIAN_DISK1"
-	export POOL_PART_1=3
-	POOL_DEVICE_1="$(devpart "$DEBIAN_DISK1" 3)"
+	export POOL_PART_1
+	if swap_enabled; then POOL_PART_1=3; else POOL_PART_1=2; fi
+	POOL_DEVICE_1="$(devpart "$DEBIAN_DISK1" "$POOL_PART_1")"
 	export POOL_DEVICE_1
 	ok "POOL_DEVICE_1 set to $POOL_DEVICE_1"
 
@@ -356,11 +361,16 @@ set_zfs_vars() {
 		ok "BOOT_DEVICE_2 set to $BOOT_DEVICE_2"
 
 		export POOL_DISK_2="$DEBIAN_DISK2"
-		export POOL_PART_2=3
-		POOL_DEVICE_2="$(devpart "$DEBIAN_DISK2" 3)"
+		export POOL_PART_2
+		if swap_enabled; then POOL_PART_2=3; else POOL_PART_2=2; fi
+		POOL_DEVICE_2="$(devpart "$DEBIAN_DISK2" "$POOL_PART_2")"
 		export POOL_DEVICE_2
 		ok "POOL_DEVICE_2 set to $POOL_DEVICE_2"
 	fi
+}
+
+swap_enabled() {
+	[[ "${DEBIAN_SWAPSIZE:-0}" =~ ^[0-9]+$ ]] && [ "$DEBIAN_SWAPSIZE" -gt 0 ]
 }
 
 wipe_disks() {
@@ -389,9 +399,13 @@ partition_disks() {
 		sgdisk --zap-all "$d" >/dev/null
 		sgdisk -n1:1MiB:+512MiB -t1:ef00 -c1:EFI "$d" >/dev/null
 		ok "Created EFI partition on $d"
-		sgdisk -n2:0:+"${DEBIAN_SWAPSIZE}"GiB -t2:8200 -c2:swap "$d" >/dev/null
-		ok "Created swap partition on $d"
-		sgdisk -n3:0:-10MiB -t3:bf00 -c3:zfs "$d" >/dev/null
+		if swap_enabled; then
+			sgdisk -n2:0:+"${DEBIAN_SWAPSIZE}"GiB -t2:8200 -c2:swap "$d" >/dev/null
+			ok "Created swap partition on $d"
+			sgdisk -n3:0:-10MiB -t3:bf00 -c3:zfs "$d" >/dev/null
+		else
+			sgdisk -n2:0:-10MiB -t2:bf00 -c2:zfs "$d" >/dev/null
+		fi
 		ok "Created ZFS partition on $d"
 		partprobe "$d" >/dev/null 2>&1 || true
 		udevadm settle >/dev/null 2>&1 || true
@@ -635,6 +649,12 @@ EOF
 }
 
 setup_swap() {
+	if ! swap_enabled; then
+		info "[Skipping swap]"
+		ok "No swap configured"
+		return 0
+	fi
+
 	info "[Setting up swap]"
 	local disks=("$DEBIAN_DISK1")
 	[[ "${DEBIAN_MIRROR_MODE:-false}" == true ]] && disks+=("$DEBIAN_DISK2")
