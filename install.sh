@@ -127,7 +127,7 @@ EOF
 	DEBIAN_FRONTEND=noninteractive apt-get update
 	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 		ca-certificates debootstrap gdisk dosfstools rsync inotify-tools \
-		util-linux kmod zfsutils-linux
+		util-linux kmod curl zfsutils-linux
 
 	if ! modprobe zfs >/dev/null 2>&1; then
 		note "ZFS module is not loaded; trying DKMS for the live kernel."
@@ -535,7 +535,7 @@ EOF
 
 	mount_chroot_filesystems
 	chroot_run apt-get update
-	apt_install_target linux-image-amd64 zfsutils-linux zfs-initramfs zfs-zed zfsbootmenu \
+	apt_install_target linux-image-amd64 zfsutils-linux zfs-initramfs zfs-zed \
 		sudo locales console-setup keyboard-configuration efibootmgr dosfstools \
 		rsync inotify-tools util-linux systemd-sysv
 	ok "Installed target packages"
@@ -616,26 +616,9 @@ configure_efi_partitions() {
 setup_zfsbootmenu() {
 	info "[Configuring ZFSBootMenu]"
 	mkdir -p /mnt/etc/zfsbootmenu /mnt/boot/efi/EFI/zbm /mnt/boot/efi/EFI/BOOT
-	cat >/mnt/etc/zfsbootmenu/config.yaml <<'EOF'
-Global:
-  ManageImages: true
-  BootMountPoint: /boot/efi
-  DracutConfDir: /etc/zfsbootmenu/dracut.conf.d
-  InitCPIOConfig: /etc/zfsbootmenu/mkinitcpio.conf
-  KeyCache: true
-Components:
-  ImageDir: /boot/efi/EFI/zbm
-  Versions: 3
-  Enabled: false
-EFI:
-  ImageDir: /boot/efi/EFI/zbm
-  Version: false
-  Enabled: true
-Kernel:
-  CommandLine: quiet loglevel=0
-EOF
-	chroot_run generate-zbm
+	curl -fsSL https://get.zfsbootmenu.org/efi/release -o /mnt/boot/efi/EFI/zbm/vmlinuz.EFI
 	cp -f /mnt/boot/efi/EFI/zbm/vmlinuz.EFI /mnt/boot/efi/EFI/BOOT/BOOTX64.EFI
+	ok "Installed upstream ZFSBootMenu EFI binary"
 
 	if [[ "${DEBIAN_MIRROR_MODE:-false}" == true ]]; then
 		for disk in "$DEBIAN_DISK1" "$DEBIAN_DISK2"; do

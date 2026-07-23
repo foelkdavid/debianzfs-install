@@ -5,7 +5,7 @@ Interactive Debian on ZFS installer with optional ZFS mirror support.
 ## What it does
 
 - Installs Debian 13 "Trixie" onto an encrypted ZFS root pool.
-- Boots through ZFSBootMenu.
+- Boots through the upstream ZFSBootMenu EFI binary.
 - Supports single-disk and mirrored ZFS layouts.
 - Creates one EFI system partition per disk in mirror mode and keeps the secondary ESP synced.
 - Optionally creates swap partitions on the selected disk or disks.
@@ -32,7 +32,8 @@ The live environment must have:
 
 The installer enables the target Debian apt components in the live environment
 and installs its host-side requirements itself, including `debootstrap`, `gdisk`,
-`dosfstools`, `zfsutils-linux`, and a DKMS fallback for the ZFS kernel module.
+`dosfstools`, `curl`, `zfsutils-linux`, and a DKMS fallback for the ZFS kernel
+module.
 
 ## Usage
 
