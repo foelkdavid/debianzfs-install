@@ -8,6 +8,7 @@ DEBIAN_RELEASE=trixie
 DEBIAN_MIRROR=http://deb.debian.org/debian
 DEBIAN_COMPONENTS="main contrib non-free-firmware"
 DEBIAN_ARCH="$(dpkg --print-architecture 2>/dev/null || true)"
+DEBIAN_ENABLE_DHCP=true
 HOST_APT_SOURCE=/etc/apt/sources.list.d/debianzfs-install-host.list
 
 set -Eeo pipefail
@@ -149,6 +150,7 @@ print_preconf_header() {
 	echo -e "  Release      -> [ ${Y}${DEBIAN_RELEASE}${NC} ]"
 	echo -e "  Mirror       -> [ ${Y}${DEBIAN_MIRROR}${NC} ]"
 	echo -e "  Components   -> [ ${Y}${DEBIAN_COMPONENTS}${NC} ]"
+	echo -e "  IPv4 DHCP    -> [ ${Y}${DEBIAN_ENABLE_DHCP}${NC} ]"
 	echo -e "  ZFS-Mirror?  -> [ ${Y}${DEBIAN_MIRROR_MODE:-}${NC} ]"
 	echo -e "  Disk1        -> [ ${Y}${DEBIAN_DISK1:-}${NC} ] ${DEBIAN_DISK1_SIZE:-}"
 	echo -e "  Disk2        -> [ ${Y}${DEBIAN_DISK2:-}${NC} ] ${DEBIAN_DISK2_SIZE:-}"
@@ -340,6 +342,21 @@ EOF
 	note "It will still be configured for the installed Debian system."
 }
 
+get_dhcp_config() {
+	info "[Configure networking]"
+	note "Enable simple IPv4 DHCP on Ethernet interfaces in the installed system?"
+	echo "------------------------"
+	while true; do
+		read -rp "Enable IPv4 DHCP? (Y/n) " yn
+		yn="${yn:-y}"
+		case "${yn,,}" in
+		y | yes) DEBIAN_ENABLE_DHCP=true && break ;;
+		n | no) DEBIAN_ENABLE_DHCP=false && break ;;
+		*) echo "Please answer y or n." ;;
+		esac
+	done
+}
+
 confirm_menu() {
 	info "[Configuration finished]"
 	note "What do you want to do?"
@@ -362,6 +379,8 @@ get_inputs() {
 	sleep 1
 	print_preconf_header
 	get_keymap
+	print_preconf_header
+	get_dhcp_config
 	print_preconf_header
 	get_disks
 	print_preconf_header
@@ -648,6 +667,31 @@ EOF
 	ok "Configured hostname, timezone, keyboard, locale, and ZFSBootMenu property"
 }
 
+configure_networking() {
+	if [[ "${DEBIAN_ENABLE_DHCP:-false}" != true ]]; then
+		info "[Skipping network autoconfiguration]"
+		ok "No DHCP network configuration written"
+		return 0
+	fi
+
+	info "[Configuring IPv4 DHCP networking]"
+	mkdir -p /mnt/etc/systemd/network
+	cat >/mnt/etc/systemd/network/20-wired-ipv4-dhcp.network <<'EOF'
+[Match]
+Type=ether
+
+[Network]
+DHCP=ipv4
+IPv6AcceptRA=no
+LinkLocalAddressing=no
+
+[DHCPv4]
+UseDNS=yes
+EOF
+	chroot_run systemctl enable systemd-networkd.service
+	ok "Enabled IPv4 DHCP via systemd-networkd"
+}
+
 configure_efi_partitions() {
 	info "[Formatting and mounting EFI partitions]"
 	mkfs.vfat -F32 "$BOOT_DEVICE_1" >/dev/null
@@ -781,6 +825,7 @@ setup_zfs
 install_base_system
 configure_efi_partitions
 configure_system
+configure_networking
 configure_initramfs
 rebuild_initramfs
 setup_zfsbootmenu

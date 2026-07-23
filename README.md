@@ -44,6 +44,7 @@ sudo ./install.sh
 The installer prompts for:
 
 - Console keymap, applied immediately in the live environment when supported.
+- Whether to enable simple IPv4 DHCP for Ethernet interfaces.
 - Target disk.
 - Optional mirror disk.
 - Swap size in GB, or `0`/`none` to skip swap.
