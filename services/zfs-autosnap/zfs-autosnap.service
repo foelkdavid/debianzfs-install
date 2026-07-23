@@ -1,0 +1,14 @@
+[Unit]
+Description=ZFS autosnapshot daemon
+After=zfs-mount.service
+Requires=zfs-mount.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/zfs-autosnap.sh
+Restart=on-failure
+RestartSec=10s
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

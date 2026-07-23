@@ -1,0 +1,17 @@
+[Unit]
+Description=Continuously sync primary EFI system partition to secondary ESP
+After=local-fs.target
+ConditionPathIsDirectory=/boot/efi
+ConditionPathIsDirectory=/boot/efi2
+
+[Service]
+Type=simple
+Environment=SRC=/boot/efi
+Environment=DST=/boot/efi2
+Environment=LOCK=/run/efisync.lock
+ExecStart=/usr/local/bin/efisync.sh
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
