@@ -289,11 +289,24 @@ get_keymap() {
 	echo "------------------------"
 	while true; do
 		read -rp "Enter keymap: " DEBIAN_KEYMAP || true
-		validate_keymap "$DEBIAN_KEYMAP" && break
+		if validate_keymap "$DEBIAN_KEYMAP"; then
+			apply_keymap "$DEBIAN_KEYMAP"
+			break
+		fi
 		failhard "Invalid keymap: $DEBIAN_KEYMAP"
 		sleep 1
 		echo -ne "\033[2A\033[0J"
 	done
+}
+
+apply_keymap() {
+	local keymap="$1"
+	if command -v loadkeys >/dev/null 2>&1 && loadkeys "$keymap" >/dev/null 2>&1; then
+		ok "Applied console keymap '$keymap' in the live environment"
+	else
+		note "Could not apply '$keymap' with loadkeys in this live environment."
+		note "It will still be configured for the installed Debian system."
+	fi
 }
 
 confirm_menu() {
@@ -317,6 +330,8 @@ get_inputs() {
 	run_prechecks
 	sleep 1
 	print_preconf_header
+	get_keymap
+	print_preconf_header
 	get_disks
 	print_preconf_header
 	mirror_decision
@@ -328,8 +343,6 @@ get_inputs() {
 	get_sudouser
 	print_preconf_header
 	get_timezone
-	print_preconf_header
-	get_keymap
 	print_preconf_header
 }
 

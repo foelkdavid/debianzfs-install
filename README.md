@@ -43,13 +43,13 @@ sudo ./install.sh
 
 The installer prompts for:
 
+- Console keymap, applied immediately in the live environment when supported.
 - Target disk.
 - Optional mirror disk.
 - Swap size in GB, or `0`/`none` to skip swap.
 - Hostname.
 - Sudo user.
 - Timezone.
-- Console keymap.
 - User password.
 - ZFS encryption passphrase.
 
