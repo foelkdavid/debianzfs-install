@@ -1,84 +1,47 @@
 # debianzfs-install
 
-Interactive Debian on ZFS installer with optional ZFS mirror support.
+Interactive Debian on ZFS installer (optional with zfs-mirror)
 
-## What it does
+Ported from my [voidzfs-install](https://github.com/foelkdavid/voidzfs-install), using Debian 13 "Trixie" and systemd.
 
-- Installs Debian 13 "Trixie" onto an encrypted ZFS root pool.
-- Boots through the upstream ZFSBootMenu EFI binary.
-- Supports single-disk and mirrored ZFS layouts.
-- Creates one EFI system partition per disk in mirror mode and keeps the secondary ESP synced.
-- Optionally creates swap partitions on the selected disk or disks.
-- Creates separate datasets for `/` and `/home`.
-- Installs native systemd services for ESP sync and automatic ZFS snapshots.
+## Howto:
 
-This requires UEFI boot. The installer partitions and wipes the selected disks.
-
-## Expected live environment
-
-Run this from an official Debian live image, not the debian-installer rescue
-shell. The live image boots a normal Debian userspace with `apt`; the installer
-rescue shell is intentionally smaller and may not have enough tooling for DKMS,
-ZFS, or debootstrap work.
-
-The easiest VM choice is the Debian amd64 live standard ISO. A desktop live ISO
-such as Xfce also works, but is larger.
-
-The live environment must have:
-
-- UEFI boot with `/sys/firmware/efi` present.
-- Network connectivity.
-- `apt-get`.
-
-The installer enables the target Debian apt components in the live environment
-and installs its host-side requirements itself, including `debootstrap`, `gdisk`,
-`dosfstools`, `curl`, `kbd`, `console-setup`, `x11-xkb-utils`, `openssl`,
-`mokutil`, `zfsutils-linux`, and a DKMS fallback for the ZFS kernel module.
-
-## Usage
+1. Boot an official Debian 13 live image. The amd64 standard ISO works; a desktop live image works too. Use the live image, not the installer rescue shell.
+2. Connect to the internet and clone this repo.
+3. Run the script from the repo directory:
 
 ```sh
 sudo ./install.sh
 ```
 
-The installer prompts for:
+The script installs the tools it needs first. This can take a while if it has to build the ZFS module. Then follow the prompts for disks, swap, hostname, user, timezone, keyboard layout and passwords. Reboot once it's done.
 
-- Console keymap, applied immediately in the live environment when supported.
-- Whether to enable simple IPv4 DHCP for Ethernet interfaces.
-- Target disk.
-- Optional mirror disk.
-- Swap size in GB, or `0`/`none` to skip swap.
-- Hostname.
-- Sudo user.
-- Timezone.
-- User password.
-- ZFS encryption passphrase.
+## Features:
 
-## Filesystem layout
+- Boots from ZFSBootMenu
+- Encrypts the ZFS filesystem
+- Optional ZFS-Mirror setup
+    - Two EFI partitions for redundancy
+        - Synced once after installation, then continuously by a custom service
+    - ZFS-mirrored system partitions
+- Customizable swap partition (use `0` or `none` to skip it)
+- Creates an additional dataset for `/home`
+- Provides systemd services for automatic snapshots + continuous EFI syncing
+    - `efisync.service` is only installed for mirrored setups
+    - Snapshot jobs can be changed in `/etc/zfs-autosnap/jobs.conf`
 
-Each selected disk is partitioned as:
+**This requires UEFI to boot. The selected disks will be wiped.**
 
-1. 512 MiB EFI system partition.
-2. Swap partition with the selected size, unless swap is disabled.
-3. Remaining space for ZFS. If swap is disabled, ZFS uses partition 2.
-
-The pool and datasets are:
+## Rough FS diagram:
 
 ```text
+Each disk:
+  EFI (512 MiB)
+  Swap (optional)
+  ZFS (remaining space, mirrored if using two disks)
+
 zroot
-zroot/ROOT
-zroot/ROOT/debian  mounted at /
-zroot/home         mounted at /home
+├── ROOT
+│   └── debian  → /
+└── home        → /home
 ```
-
-## Services
-
-`efisync.service` is installed only for mirrored systems. It watches `/boot/efi` and syncs changes to `/boot/efi2`.
-
-`zfs-autosnap.service` is always installed. Jobs are configured in `/etc/zfs-autosnap/jobs.conf` using:
-
-```text
-name|dataset|label|schedule|keep|slack|flags
-```
-
-The bundled scheduler supports the default daily, hourly, 15-minute, and minute-style schedules.
