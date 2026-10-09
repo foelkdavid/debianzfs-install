@@ -4,6 +4,10 @@ Interactive Debian on ZFS installer (optional with zfs-mirror)
 
 Ported from my [voidzfs-install](https://github.com/foelkdavid/voidzfs-install), using Debian 13 "Trixie" and systemd.
 
+<img width="50%" alt="Void ZFS installer configuration and disk selection screen" src="images/voidzfs-installer.png" />
+
+Installer screenshot from the original Void version.
+
 ## Howto:
 
 1. Boot an official Debian 13 live image. The amd64 standard ISO works; a desktop live image works too. Use the live image, not the installer rescue shell.
@@ -33,6 +37,10 @@ The script installs the tools it needs first. This can take a while if it has to
 **This requires UEFI to boot. The selected disks will be wiped.**
 
 ## Rough FS diagram:
+
+<img width="40%" alt="Two disks with EFI, optional swap and mirrored ZFS partitions, with datasets for root and home" src="images/zfs-layout.png" />
+
+Layout diagram from voidzfs-install. The Debian dataset names are shown below.
 
 ```text
 Each disk:
