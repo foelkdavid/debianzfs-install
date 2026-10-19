@@ -33,7 +33,8 @@ Configuration asks each setting separately and redraws the complete summary:
 console keyboard, Ethernet IPv4 DHCP, disk(s), mirror, Debian archive mirror,
 swap, **ZFS encryption**, hostname, username, timezone and optional desktop.
 Encryption defaults to yes. The account password and, when encrypted, the ZFS
-passphrase are confirmed before final review; only set/unset is displayed.
+passphrase are confirmed before final review; only `set` markers are displayed.
+Unanswered fields show empty `[ ]` brackets.
 ZFSBootMenu uses a US keyboard for unlocking. Restart clears all answers and
 secrets. Restart and Exit do not install live prerequisites or contact package
 sources.

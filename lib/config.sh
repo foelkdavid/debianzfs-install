@@ -176,29 +176,38 @@ reset_configuration() {
     DEBIAN_MIRROR=https://deb.debian.org/debian
 }
 
-config_row() { printf '  %-14s -> [ %b%s%b ]\n' "$1" "$Y" "$2" "$NC"; }
+config_row() {
+    if [[ -n $2 ]]; then
+        printf '  %-14s -> [ %b%s%b ]\n' "$1" "$Y" "$2" "$NC"
+    else
+        printf '  %-14s -> [ ]\n' "$1"
+    fi
+}
 
 print_preconf_header() {
+    local passwords=''
+    if [[ -n ${USER_PASSWORD:-} ]]; then passwords='account: set'; fi
+    if [[ -n ${ZFS_PASSPHRASE:-} ]]; then passwords+="${passwords:+; }ZFS: set"; fi
     screen_header
     {
         frame_line Y '[Configuration]'
-        config_row 'Archive mirror' "${DEBIAN_MIRROR:-unset}"
-        config_row 'ZFS mirror' "${DEBIAN_MIRROR_MODE:-unset}"
-        config_row 'ERASE disk 1' "${DEBIAN_DISK1:-unset}"
-        config_row 'ERASE disk 2' "${DEBIAN_DISK2:-none}"
-        config_row 'Swap GiB/disk' "${DEBIAN_SWAPSIZE:-unset}"
-        config_row 'ZFS encryption' "${DEBIAN_ENCRYPTION:-unset}"
-        config_row 'Hostname' "${DEBIAN_HOSTNAME:-unset}"
-        config_row 'Username' "${DEBIAN_SUDOUSER:-unset}"
-        config_row 'Timezone' "${DEBIAN_TIMEZONE:-unset}"
-        config_row 'Console keymap' "${DEBIAN_KEYMAP:-unset}"
-        config_row 'Networking' "$([[ ${DEBIAN_DESKTOP:-false} == true ]] && echo NetworkManager || echo systemd-networkd); IPv4 DHCP: ${DEBIAN_ENABLE_DHCP:-unset}"
-        config_row 'Desktop' "${DEBIAN_DESKTOP:-unset}"
-        if [[ ${DEBIAN_DESKTOP:-false} == true ]]; then config_row 'GPU profile' "${GPU_DRIVER:-unset}"; fi
+        config_row 'Archive mirror' "${DEBIAN_MIRROR:-}"
+        config_row 'ZFS mirror' "${DEBIAN_MIRROR_MODE:-}"
+        config_row 'ERASE disk 1' "${DEBIAN_DISK1:-}"
+        config_row 'ERASE disk 2' "${DEBIAN_DISK2:-}"
+        config_row 'Swap GiB/disk' "${DEBIAN_SWAPSIZE:-}"
+        config_row 'ZFS encryption' "${DEBIAN_ENCRYPTION:-}"
+        config_row 'Hostname' "${DEBIAN_HOSTNAME:-}"
+        config_row 'Username' "${DEBIAN_SUDOUSER:-}"
+        config_row 'Timezone' "${DEBIAN_TIMEZONE:-}"
+        config_row 'Console keymap' "${DEBIAN_KEYMAP:-}"
+        config_row 'Networking' "$([[ ${DEBIAN_DESKTOP:-false} == true ]] && echo NetworkManager || echo systemd-networkd); IPv4 DHCP: ${DEBIAN_ENABLE_DHCP:-}"
+        config_row 'Desktop' "${DEBIAN_DESKTOP:-}"
+        if [[ ${DEBIAN_DESKTOP:-false} == true ]]; then config_row 'GPU profile' "${GPU_DRIVER:-}"; fi
         if [[ ${GPU_DRIVER:-} == vm ]]; then
-            config_row 'VM integration' "${VM_GUEST:-unset}; software rendering: ${VM_SOFTWARE_RENDERING:-unset}"
+            config_row 'VM integration' "${VM_GUEST:-}; software rendering: ${VM_SOFTWARE_RENDERING:-}"
         fi
-        config_row 'Passwords' "account: $([[ -n ${USER_PASSWORD:-} ]] && echo set || echo unset); ZFS: $([[ -n ${ZFS_PASSPHRASE:-} ]] && echo set || echo unset)"
+        config_row 'Passwords' "$passwords"
         separator
     } >&3
 }
