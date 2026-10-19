@@ -12,9 +12,6 @@ HOST_APT_SOURCE=/etc/apt/sources.list.d/debianzfs-install-host.list
 source "$REPO_DIR/lib/ui.sh"
 source "$REPO_DIR/lib/config.sh"
 source "$REPO_DIR/lib/target.sh"
-info() { printf '%s\n' "$*"; }
-ok() { printf '[passed] %s\n' "$*"; }
-failhard() { printf '[failed] %s\n' "$*" >&2; }
 
 devpart() {
     local disk="$1" part="${2:-1}" sep=""
@@ -402,7 +399,6 @@ run_guided_installation() {
             0) INSTALL_CONFIRMED=true; break ;;
         esac
     done
-    allocate_log_vt
     run_stage 'Check DNS and HTTPS sources' source_connectivity_check
     run_stage 'Prepare live dependencies' install_host_requirements
     run_stage 'Validate ZFS and installation tools' validate_live_tools
@@ -410,11 +406,12 @@ run_guided_installation() {
     # EXIT also handles failures, but success is only printed after export.
     run_stage 'Restore policies and clean up / export pool' cleanup_target
     CLEANED=true
-    printf '\nInstallation finished. Reboot and log in as %s.\n' "$DEBIAN_SUDOUSER" >&3
+    printf '\n' >&3
+    ok "Installation finished. Reboot and log in as $DEBIAN_SUDOUSER." >&3
     if [[ $DEBIAN_DESKTOP == true ]]; then
-        printf 'Hyprland starts after interactive TTY1 login; exiting it returns to your shell.\n' >&3
+        note 'Hyprland starts after interactive TTY1 login; exiting it returns to your shell.' >&3
     fi
-    printf 'Complete live log: %s\n' "$LOG_FILE" >&3
+    note "Complete live log: $LOG_FILE" >&3
 }
 
 main() {

@@ -11,13 +11,15 @@ operations are mocked. They cover desktop/no-desktop, all GPU profiles,
 encryption on/off, secret handling, restart reset, explicit-start gating,
 BIOS early stop, HTTPS error propagation, busy/small/duplicate/partition disk
 rejection, stage order, networking/DHCP, policy restoration, same-shell state,
-nested/pipeline failures, export failures, cleanup retries, mirrored ESP mount options, full logs and permissions. PTY tests
+nested/pipeline failures, export failures, cleanup retries, mirrored ESP mount
+options, full logs and permissions. PTY tests
 exercise verbose output, stage transitions, resize, interrupt, cursor restore
-and no-spare-VT fallback. Startup regression tests cover configuration before
-network/package work, restart/exit, Secure Boot detection, rejected module
-signatures, compact final review, control-sequence filtering, bounded frames
-and renderer shutdown without stale writes. They never execute installation
-on the host.
+and file-only logging without any VT allocation. Startup regression tests cover
+configuration before network/package work, restart/exit, Secure Boot detection,
+rejected module signatures, compact final review, control-sequence filtering, bounded frames,
+renderer shutdown without stale writes, the Void configuration palette,
+`NO_COLOR`, Unicode clipping in a C locale and the five-line preview. They never
+execute installation on the host.
 
 Syntax/static checks:
 
@@ -116,6 +118,22 @@ No host installation or physical-GPU validation is implied by these tests.
   enrollment was not tested. This installer requires Secure Boot disabled.
 - The full UEFI guest installations above apply to the initial implementation.
   They were not repeated for this startup/display change.
+
+## Void-style interface (2026-10-19)
+
+- All 27 functional/PTY tests passed on the host and in disposable Debian
+  Trixie containers, including a run with `LC_ALL=C`. All five deployment GPU
+  dry runs, Bash syntax, ShellCheck 0.11.0 and `git diff --check` passed.
+- PTY checks verify green titles, yellow bracketed values, purple stage
+  headings, blue log notes, red failures, `NO_COLOR`, terminal resizing,
+  interrupts and valid Unicode clipping. Logs retain full output and stages
+  stop on failure; the on-screen preview contains at most five recent lines.
+- Configuration and installation previews were captured from 80x24 PTYs,
+  rendered with the pyte terminal emulator and visually inspected. The full
+  mirror/VM/encryption configuration and final confirmation fit on screen.
+- VT allocation and completed-step history were removed at the user's request.
+  The reference repository was read without modification. Full installations
+  and physical GPU checks were not repeated for these interface changes.
 
 Physical GPU tests (especially NVIDIA), Secure Boot enrollment, VMware guest
 integration, and physical-machine installation were not performed. GPU profiles

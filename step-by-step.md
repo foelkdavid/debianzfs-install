@@ -26,11 +26,11 @@
    After Start, the installer checks connectivity, updates packages, prepares
    live dependencies and validates ZFS. Disk partitioning follows a fresh
    disk-safety check. There are no further configuration questions.
-8. Follow the stage display. Recent command output appears below completed
-   stages; full logs remain in `/var/log/debianzfs-install/` in the live system.
-   If a spare VT was allocated, use the displayed Ctrl+Alt+Fn shortcut to view
-   the full stream, then switch back to your original TTY. With no spare VT,
-   file logging remains available. Failure stops installation and retains logs.
+8. Follow the colored stage heading and up to five lines of current output.
+   The previous stage's output clears automatically. Full logs remain in
+   `/var/log/debianzfs-install/` in the live system; their path is displayed.
+   There is no log VT or TTY switching. Failure stops installation and retains
+   the log. `NO_COLOR=1` disables colors if preferred.
 9. Wait for the explicit success message after unmounting and pool export.
    Reboot and remove the live medium. Unlock encrypted ZFS in ZFSBootMenu, then
    log in using your configured username and account password.

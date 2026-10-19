@@ -84,26 +84,17 @@ secure_boot_check() {
     fi
 }
 
-preflight_content() {
-    header_content
-    local j
-    for j in "${!labels[@]}"; do printf '[%s] %s\n' "${states[j]}" "${labels[j]}"; done
-    if [[ -s $WORK_DIR/preflight.log ]]; then cat "$WORK_DIR/preflight.log"; fi
-}
-
 run_prechecks() {
     # Only quick, local checks precede configuration. Network/package work is
     # deferred until the user has entered everything and explicitly starts.
     local -a labels=('Root privileges' 'Detected boot mode' 'Debian 13 live / amd64' 'Required bundled files' 'Secure Boot compatibility')
     local -a checks=('root' 'boot' 'live' 'files' 'secureboot')
-    local -a states=(pending pending pending pending pending)
     local i result=0
     : > "$WORK_DIR/preflight.log"
-    "$UI_TTY" || screen_header
+    screen_header
+    info '[Running Pre-Checks]' >&3
     for i in "${!checks[@]}"; do
         CURRENT_STAGE="Preflight: ${labels[i]}"
-        states[i]=running
-        if "$UI_TTY"; then terminal_size; preflight_content | draw_frame; fi
         # Functions in this conditional must explicitly propagate each error.
         case ${checks[i]} in
             root) root_privileges_check && result=0 || result=1 ;;
@@ -113,21 +104,20 @@ run_prechecks() {
             secureboot) secure_boot_check && result=0 || result=1 ;;
         esac > "$WORK_DIR/preflight.log" 2>&1
         cat "$WORK_DIR/preflight.log" >> "$LOG_FILE"
-        if ((result)); then states[i]=failed; else states[i]=passed; fi
-        if "$UI_TTY"; then
-            preflight_content | draw_frame
+        if ((result)); then
+            failhard "${labels[i]}" 2>&3
+            sanitize_output < "$WORK_DIR/preflight.log" >&3
+            printf '[%s] [failed] %s\n' "$(date -u +%FT%TZ)" "${labels[i]}" >> "$LOG_FILE"
+            return 1
         else
-            printf '[%s] %s\n' "${states[i]}" "${labels[i]}" >&3
-            cat "$WORK_DIR/preflight.log" >&3
+            ok "${labels[i]}" >&3
+            printf '[%s] [passed] %s\n' "$(date -u +%FT%TZ)" "${labels[i]}" >> "$LOG_FILE"
         fi
-        printf '[%s] [%s] %s\n' "$(date -u +%FT%TZ)" "${states[i]}" "${labels[i]}" >> "$LOG_FILE"
-        ((result == 0)) || { printf '\n' >&3; failhard "Preflight: ${labels[i]}"; return 1; }
         if [[ ${checks[i]} == boot && $BOOT_MODE == 'Legacy BIOS' ]]; then
             printf '\nBIOS installation support is pending another branch. No installation changes made.\n' >&3
             return 1
         fi
     done
-    COMPLETED+=('Local preflight checks')
 }
 
 try_load_zfs() {
@@ -186,31 +176,42 @@ reset_configuration() {
     DEBIAN_MIRROR=https://deb.debian.org/debian
 }
 
+config_row() { printf '  %-14s -> [ %b%s%b ]\n' "$1" "$Y" "$2" "$NC"; }
+
 print_preconf_header() {
     screen_header
-    printf 'Configuration - Debian %s / amd64\n' "$DEBIAN_RELEASE" >&3
-    printf '  Console keyboard: %-12s IPv4 DHCP: %s\n' "${DEBIAN_KEYMAP:-unset}" "${DEBIAN_ENABLE_DHCP:-unset}" >&3
-    printf '  ERASE disk 1: %s\n  ERASE disk 2: %s\n' "${DEBIAN_DISK1:-unset}" "${DEBIAN_DISK2:-unset}" >&3
-    printf '  ZFS mirror: %-18s Swap GiB per disk: %s\n' "${DEBIAN_MIRROR_MODE:-unset}" "${DEBIAN_SWAPSIZE:-unset}" >&3
-    printf '  Debian mirror: %s\n' "${DEBIAN_MIRROR:-unset}" >&3
-    printf '  ZFS encryption: %s\n' "${DEBIAN_ENCRYPTION:-unset}" >&3
-    printf '  Hostname: %-20s Username: %s\n' "${DEBIAN_HOSTNAME:-unset}" "${DEBIAN_SUDOUSER:-unset}" >&3
-    printf '  Timezone: %s\n' "${DEBIAN_TIMEZONE:-unset}" >&3
-    printf '  Desktop: %-21s GPU profile: %s\n' "${DEBIAN_DESKTOP:-unset}" "${GPU_DRIVER:-unset}" >&3
-    printf '  VM integration: %-14s Software rendering: %s\n' "${VM_GUEST:-unset}" "${VM_SOFTWARE_RENDERING:-unset}" >&3
-    printf '  Account password: %-12s ZFS passphrase: %s\n' \
-        "$([[ -n ${USER_PASSWORD:-} ]] && echo set || echo unset)" \
-        "$([[ -n ${ZFS_PASSPHRASE:-} ]] && echo set || echo unset)" >&3
-    printf '  Network manager: %s\n\n' "$([[ ${DEBIAN_DESKTOP:-false} == true ]] && echo NetworkManager || echo systemd-networkd)" >&3
+    {
+        frame_line Y '[Configuration]'
+        config_row 'Archive mirror' "${DEBIAN_MIRROR:-unset}"
+        config_row 'ZFS mirror' "${DEBIAN_MIRROR_MODE:-unset}"
+        config_row 'ERASE disk 1' "${DEBIAN_DISK1:-unset}"
+        config_row 'ERASE disk 2' "${DEBIAN_DISK2:-none}"
+        config_row 'Swap GiB/disk' "${DEBIAN_SWAPSIZE:-unset}"
+        config_row 'ZFS encryption' "${DEBIAN_ENCRYPTION:-unset}"
+        config_row 'Hostname' "${DEBIAN_HOSTNAME:-unset}"
+        config_row 'Username' "${DEBIAN_SUDOUSER:-unset}"
+        config_row 'Timezone' "${DEBIAN_TIMEZONE:-unset}"
+        config_row 'Console keymap' "${DEBIAN_KEYMAP:-unset}"
+        config_row 'Networking' "$([[ ${DEBIAN_DESKTOP:-false} == true ]] && echo NetworkManager || echo systemd-networkd); IPv4 DHCP: ${DEBIAN_ENABLE_DHCP:-unset}"
+        config_row 'Desktop' "${DEBIAN_DESKTOP:-unset}"
+        if [[ ${DEBIAN_DESKTOP:-false} == true ]]; then config_row 'GPU profile' "${GPU_DRIVER:-unset}"; fi
+        if [[ ${GPU_DRIVER:-} == vm ]]; then
+            config_row 'VM integration' "${VM_GUEST:-unset}; software rendering: ${VM_SOFTWARE_RENDERING:-unset}"
+        fi
+        config_row 'Passwords' "account: $([[ -n ${USER_PASSWORD:-} ]] && echo set || echo unset); ZFS: $([[ -n ${ZFS_PASSPHRASE:-} ]] && echo set || echo unset)"
+        separator
+    } >&3
 }
 
 ask() {
     local variable=$1 prompt=$2 default=${3:-} response
     print_preconf_header
     if [[ $variable == DEBIAN_DISK1 || $variable == DEBIAN_DISK2 ]]; then
-        lsblk -dpno NAME,SIZE,MODEL,TYPE >&3
+        printf '%b' "$LB" >&3
+        lsblk -dpno NAME,SIZE,MODEL,TYPE | awk '$NF=="disk"' >&3
+        printf '%b' "$NC" >&3
     fi
-    read -r -p "$prompt " response || return 1
+    read -r -p "$P$prompt$NC " response || return 1
     printf -v "$variable" '%s' "${response:-$default}"
 }
 
@@ -221,7 +222,7 @@ ask_bool() {
         case ${answer,,} in
             y|yes) printf -v "$variable" true; break ;;
             n|no) printf -v "$variable" false; break ;;
-            *) printf 'Answer y or n.\n' >&3 ;;
+            *) failhard 'Answer y or n.' 2>&3 ;;
         esac
     done
 }
@@ -256,7 +257,7 @@ XKBOPTIONS=""
 BACKSPACE="guess"
 EOF
     if ! setupcon -k --force >/dev/null 2>&1; then
-        printf 'Console keymap could not be applied here; it will be configured in the target.\n' >&3
+        note 'Console keymap could not be applied here; it will be configured in the target.' >&3
     fi
 }
 
@@ -265,7 +266,7 @@ ask_validated() {
     while :; do
         ask "$variable" "$prompt" "$default"
         "$validator" "${!variable}" && break
-        printf 'Invalid value; try again.\n' >&3
+        failhard 'Invalid value; try again.' 2>&3
     done
 }
 
@@ -274,10 +275,10 @@ get_secret() {
     while :; do
         print_preconf_header
         if [[ $variable == ZFS_PASSPHRASE ]]; then
-            printf 'ZFSBootMenu uses a US keyboard for unlock.\n' >&3
+            note 'ZFSBootMenu uses a US keyboard for unlock.' >&3
         fi
-        read -r -s -p "$label: " first || return 1; printf '\n' >&3
-        read -r -s -p "Confirm $label: " second || return 1; printf '\n' >&3
+        read -r -s -p "$P$label:$NC " first || return 1; printf '\n' >&3
+        read -r -s -p "${P}Confirm $label:$NC " second || return 1; printf '\n' >&3
         if [[ -n $first && $first == "$second" ]]; then
             if [[ $variable != ZFS_PASSPHRASE || (${#first} -ge 8 && ${#first} -le 512) ]]; then
                 printf -v "$variable" '%s' "$first"
@@ -285,7 +286,7 @@ get_secret() {
                 return 0
             fi
         fi
-        printf 'Values must match and be nonempty (ZFS: 8–512 characters).\n' >&3
+        failhard 'Values must match and be nonempty (ZFS: 8–512 characters).' 2>&3
     done
 }
 
@@ -335,7 +336,7 @@ get_inputs() {
             ask_validated DEBIAN_DISK2 'Second whole disk to ERASE:' whole_disk
             DEBIAN_DISK2=$(readlink -f "$DEBIAN_DISK2")
             [[ $DEBIAN_DISK2 != "$DEBIAN_DISK1" ]] && break
-            printf 'Mirror members must be different disks.\n' >&3
+            failhard 'Mirror members must be different disks.' 2>&3
         done
     fi
     ask_validated DEBIAN_MIRROR 'Debian mirror [https://deb.debian.org/debian]:' valid_mirror "$DEBIAN_MIRROR"
@@ -354,10 +355,9 @@ get_inputs() {
 
 confirm_menu() {
     local answer
-    printf 'The ERASE disks above will be completely wiped.\n' >&3
-    printf 'After Start: connectivity checks, live packages, ZFS, then installation.\n' >&3
+    printf '%bThe ERASE disks above will be completely wiped.%b\n' "$R" "$NC" >&3
     while :; do
-        read -r -p '[s] Start installation  [r] Restart configuration  [e] Exit: ' answer || return 20
+        read -r -p "${P}[s] Start installation  [r] Restart configuration  [e] Exit:$NC " answer || return 20
         case ${answer,,} in s|start) return 0 ;; r) return 10 ;; e) return 20 ;; esac
     done
 }

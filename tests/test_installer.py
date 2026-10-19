@@ -34,7 +34,6 @@ class InstallerTests(unittest.TestCase):
         return '''
 BOOT_MODE=UEFI
 LOG_DIR="$TEST_ROOT/logs"
-fgconsole() { return 1; }
 ui_init
 trap 'installer_exit "$?"' EXIT
 trap 'exit "$?"' ERR
@@ -119,7 +118,6 @@ get_inputs() {
     DEBIAN_DESKTOP=false DEBIAN_SUDOUSER=fixture
     USER_PASSWORD=private GPU_DRIVER=vm
 }
-allocate_log_vt() { echo VT-ALLOCATION; }
 source_connectivity_check() { echo NETWORK; }
 install_host_requirements() { echo PACKAGES; }
 validate_live_tools() { echo ZFS-VALIDATION; }
@@ -130,7 +128,7 @@ run_guided_installation
 '''
         out = self.bash(fixture, 'r\ns\n')
         self.assertEqual(out.count('ANSWERS'), 2)
-        markers = ('VT-ALLOCATION', 'NETWORK', 'PACKAGES', 'ZFS-VALIDATION', 'INSTALLATION')
+        markers = ('NETWORK', 'PACKAGES', 'ZFS-VALIDATION', 'INSTALLATION')
         for marker in markers:
             self.assertGreater(out.index(marker), out.rindex('ANSWERS'))
         self.assertEqual([out.index(x) for x in markers], sorted(out.index(x) for x in markers))
@@ -321,26 +319,23 @@ run_stage second two
         self.assertIn("verbose-line-0", text)
         self.assertIn("verbose-line-149", text)
         self.assertIn("next-stage", text)
-        self.assertNotIn('verbose-line-', output)
-        self.assertNotIn('next-stage', output)
+        self.assertNotIn('verbose-line-0\n', output)
+        self.assertIn('verbose-line-149', output)
+        self.assertIn('next-stage', output)
+        self.assertLessEqual(output.count('verbose-line-'), 5)
 
-    def test_occupied_vt_falls_back_without_force_or_switch(self):
+    def test_logging_never_allocates_or_switches_virtual_terminals(self):
         output = self.bash('''
-BOOT_MODE=UEFI LOG_DIR="$TEST_ROOT/logs"
-fgconsole() { echo 1; }
-openvt() { printf '%s\\n' "$*" > "$TEST_ROOT/vt-arguments"; return 1; }
-ui_init
-allocate_log_vt
-printf '%s\\n' "$VT_STATUS"
-ui_restore
-rm -rf -- "$WORK_DIR"
+openvt() { echo UNEXPECTED-VT; return 1; }
+fgconsole() { echo UNEXPECTED-VT; return 1; }
+''' + self.ui() + '''
+reset_configuration
+print_preconf_header
+run_stage fixture echo logged-output
 ''')
-        self.assertIn('no unused Linux VT', output)
-        arguments = (self.root / 'vt-arguments').read_text().split(' -- ', 1)[0].split()
-        self.assertNotIn('-f', arguments)
-        self.assertNotIn('-s', arguments)
-        self.assertNotIn('--force', arguments)
-        self.assertNotIn('--switch', arguments)
+        self.assertNotIn('UNEXPECTED-VT', output)
+        self.assertNotIn('Ctrl+Alt', output)
+        self.assertNotIn('VT', output)
 
     def test_small_stage_frame_removes_controls_and_never_scrolls(self):
         out = self.bash(self.ui() + r'''
@@ -348,14 +343,15 @@ terminal_size() { UI_ROWS=10 UI_COLS=40; }
 COMPLETED=()
 for ((i=0;i<40;i++)); do COMPLETED+=("Earlier step $i"); done
 CURRENT_STAGE='Install packages with a long description'
-CURRENT_STATE=running
 printf '\033]0;untrusted title\007\033[31mprogress\ttext\r\033[0m\n' > "$STAGE_OUTPUT"
-render_stage
+LC_ALL=C render_stage
 ''')
         frame = re.search(r'\x1b\[H(.*?)\x1b\[J', out, re.S).group(1)
-        self.assertIn('[running] Install packages', frame)
+        self.assertIn('[Install packages', frame)
+        self.assertNotIn('Earlier step', frame)
         self.assertIn('progress    text', frame)
         self.assertNotIn('untrusted title', frame)
+        self.assertEqual(frame.splitlines()[0], '─' * 39)
         self.assertNotRegex(frame, r'[\x00-\x09\x0b-\x1f\x7f]')
         self.assertLessEqual(len(frame.splitlines()), 9)
         self.assertLessEqual(max(map(len, frame.splitlines())), 39)
@@ -381,6 +377,7 @@ confirm_menu
         out = self.bash(self.ui() + '''
 UI_TTY=true
 render_stage() {
+    [[ $BASHPID != $$ ]] || return 0
     { touch "$WORK_DIR/frame-started"; sleep .2; echo FINISHED-FRAME; } | cat >&3
 }
 wait_for_frame() { while [[ ! -e $WORK_DIR/frame-started ]]; do sleep .01; done; }
@@ -436,14 +433,55 @@ persist_target_log
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn(f"graphics: {profile}", result.stdout)
 
-    def test_pty_verbose_resize_transition_interrupt_and_no_vt(self):
+    def test_pty_void_configuration_palette_and_no_color(self):
+        for colored in (True, False):
+            with self.subTest(colored=colored):
+                master, slave = pty.openpty()
+                self.addCleanup(os.close, master)
+                self.addCleanup(os.close, slave)
+                fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
+                env = dict(os.environ, TEST_ROOT=str(self.root), REPO=str(REPO), TERM="linux")
+                env.pop("NO_COLOR", None)
+                if not colored: env["NO_COLOR"] = "1"
+                code = 'source "$REPO/install.sh"\n' + self.ui() + '''
+reset_configuration
+DEBIAN_KEYMAP=de-latin1
+DEBIAN_SUDOUSER=fixture
+USER_PASSWORD=hidden-password
+print_preconf_header
+run_stage preparation info '[Install live packages]'
+'''
+                proc = subprocess.Popen(["bash", "-c", code], stdin=slave, stdout=slave, stderr=slave,
+                                        env=env, start_new_session=True)
+                self.addCleanup(lambda p=proc: p.poll() is None and os.killpg(p.pid, signal.SIGKILL))
+                output = b""
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline:
+                    if select.select([master], [], [], .05)[0]: output += os.read(master, 65536)
+                    elif proc.poll() is not None: break
+                self.assertEqual(proc.wait(timeout=2), 0)
+                text = output.decode()
+                self.assertIn('Console keymap -> [ ', text)
+                self.assertNotIn('hidden-password', text)
+                if colored:
+                    self.assertIn('\x1b[0;32mDebian-ZFS-Installer', text)
+                    self.assertIn('\x1b[0;33m[Configuration]', text)
+                    self.assertIn('[ \x1b[0;33mde-latin1\x1b[0m ]', text)
+                    self.assertIn('\x1b[0;35m[preparation]', text)
+                else:
+                    self.assertNotRegex(text, r'\x1b\[[0-9;]*m')
+                for log in (self.root / 'logs').glob('*.log'):
+                    self.assertNotIn('\x1b', log.read_text())
+                    self.assertNotIn('hidden-password', log.read_text())
+
+    def test_pty_colors_verbose_resize_transition_and_interrupt(self):
         master, slave = pty.openpty()
         self.addCleanup(os.close, master)
         self.addCleanup(os.close, slave)
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 90, 0, 0))
         env = dict(os.environ, TEST_ROOT=str(self.root), REPO=str(REPO), TERM="xterm")
+        env.pop('NO_COLOR', None)
         script = 'source "$REPO/install.sh"\n' + self.ui() + '''
-allocate_log_vt
 verbose() { for ((i=0;i<100;i++)); do echo "output-$i"; done; printf '%0200d\\n' 0; sleep .8; }
 run_stage first verbose
 run_stage second sleep 20
@@ -461,22 +499,29 @@ run_stage second sleep 20
                 fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 18, 65, 0, 0))
                 os.killpg(proc.pid, signal.SIGWINCH)
                 resized = True
-            if b"[running] second" in output:
+            if b"[second]" in output:
                 os.killpg(proc.pid, signal.SIGINT)
                 break
         self.assertTrue(resized, output.decode(errors="replace"))
         self.assertEqual(proc.wait(timeout=10), 130)
         while select.select([master], [], [], .2)[0]: output += os.read(master, 65536)
         text = output.decode(errors="replace")
-        self.assertIn("no unused Linux VT", text)
-        self.assertIn("[passed] first", text)
-        self.assertIn("[running] second", text)
-        self.assertIn("[failed] second", text)
+        self.assertIn("[first]", text)
+        self.assertIn("[second]", text)
+        self.assertIn("✘ second", text)
+        self.assertIn("\x1b[0;31m✘ second", text)
+        self.assertIn("\x1b[0;32mDebian-ZFS-Installer", text)
+        self.assertIn("\x1b[0;35m[second]", text)
+        self.assertIn("\x1b[1;34mLog:", text)
+        self.assertNotIn("[passed] first", text)
+        self.assertNotIn("Ctrl+Alt", text)
         self.assertIn("\x1b[?25h", text)
-        widths = {len(line) for line in re.findall(r'(?:^|\n)(0+)(?=\r?\n|\x1b\[J)', text)}
+        plain = re.sub(r'\x1b\[[0-9;]*m', '', text)
+        widths = {len(line) for line in re.findall(r'(?:^|\n)(0+)(?=\r?\n|\x1b\[J)', plain)}
         self.assertIn(89, widths)
         self.assertIn(64, widths)
         for frame in re.findall(r'\x1b\[H(.*?)\x1b\[J', text, flags=re.S):
+            frame = re.sub(r'\x1b\[[0-9;]*m', '', frame)
             lines = frame.replace('\r', '').splitlines()
             limit = 64 if '0' * 64 in lines else 89
             height = 17 if limit == 64 else 23
@@ -485,6 +530,7 @@ run_stage second sleep 20
         log = next((self.root / "logs").glob("*.log"))
         self.assertIn("output-0", log.read_text())
         self.assertIn("output-99", log.read_text())
+        self.assertNotIn("\x1b", log.read_text())
 
 
 if __name__ == "__main__":

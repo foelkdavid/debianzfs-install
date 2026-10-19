@@ -72,9 +72,10 @@ and is restored on success or failure, preserving the installer's outer policy.
 NetworkManager is enabled and competing network services are disabled/masked.
 The parent installer creates the chosen DHCP profile, performs the final
 initramfs rebuild and mirrored ESP sync, and exports the pool before reporting
-success. Its UI identifies UEFI/Legacy BIOS and provides stage output, a full
-root-readable log and, when available, a separate unused log VT. See the
-[parent README](../README.md) for boot support, TTY switching and log retention.
+success. Its Void-style colored UI identifies UEFI/Legacy BIOS and shows the
+current stage with up to five lines of output. Complete output stays in a
+root-readable log file; no separate log VT is allocated. See the
+[parent README](../README.md) for boot support, display and log retention.
 
 ## Configuration and keys
 

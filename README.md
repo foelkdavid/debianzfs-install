@@ -66,17 +66,20 @@ with a temporary policy, restored on success and failure. The target has a
 private `/run` and copied live DNS during package setup. The installer owns a
 private mount namespace so live service namespaces cannot retain target mounts.
 
-The stage display shows completed steps, the running step and a rolling window
-of recent output. Small terminals show a count of earlier completed stages;
-the full history remains in the log. Each progress frame fits inside the
-terminal, and resizing is handled on the next redraw. Unsuitable terminals show
-concise plain stage statuses; command output stays in the full log and appears
-on failure. Untruncated, timestamped logs are kept with mode 0600 under
-`/var/log/debianzfs-install/` in the live environment. If an
-unused Linux virtual terminal can be allocated safely after Start, its number
-and switching instructions appear above the UI. Switch with **Ctrl+Alt+Fn**;
-return to your original installer TTY. Allocation never switches focus or overwrites an
-occupied VT. Without a spare VT, file logging continues.
+The interface follows `voidzfs-install`: a green title, yellow configuration
+values in aligned `-> [ value ]` rows, purple stage headings and blue notes.
+Configuration still collects all answers before package preparation starts.
+During installation, only the current heading and the latest **five lines** of
+its output are shown. Each stage clears the previous output; the display stays
+within the terminal bounds and adapts when resized. There is no completed-step
+list or separate log VT. Unsuitable terminals show plain headings and up to
+five recent lines at each stage's end. Set `NO_COLOR=1` to disable colors.
+
+Complete, timestamped logs are kept with mode 0600 under
+`/var/log/debianzfs-install/` in the live environment. The path is shown during
+installation and when exiting. All command output and stage results remain in
+the file, including lines omitted from the on-screen preview. Passwords and
+passphrases are never logged.
 
 Before unmounting, the log is also copied under `/var/log/debianzfs-install/` in
 the target. The complete live log additionally includes final unmount/export
