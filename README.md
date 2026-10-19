@@ -18,11 +18,16 @@ installation** at the final review. Never run this on an installed workstation.
 Legacy BIOS is detected and displayed normally, but installation stops before
 package preparation or disk changes: BIOS support is pending another branch.
 
-The visible preflight checklist checks root, boot mode, Debian live/amd64,
-bundled files, DNS and HTTPS. A logged preparation stage installs live tools and
-builds the live ZFS module if necessary. HTTPS connectivity does not depend on
-ping. Secure Boot must permit the ZFS module and upstream ZFSBootMenu EFI image;
-this installer does not enroll signing keys.
+Startup performs only quick local checks: root, boot mode, Debian live/amd64,
+bundled files and Secure Boot compatibility. Enter all settings and confirm
+**Start installation** before waiting for network checks, package updates, live
+tools or ZFS module preparation. HTTPS checks do not depend on ping.
+
+**Disable Secure Boot in UEFI firmware before booting the live image.** This
+installer does not enroll signing keys for ZFS modules or its ZFSBootMenu image.
+An enabled Secure Boot setting stops setup immediately with instructions. A
+later module-signature rejection stops preparation instead of rebuilding the
+same rejected module.
 
 Configuration asks each setting separately and redraws the complete summary:
 console keyboard, Ethernet IPv4 DHCP, disk(s), mirror, Debian archive mirror,
@@ -30,7 +35,8 @@ swap, **ZFS encryption**, hostname, username, timezone and optional desktop.
 Encryption defaults to yes. The account password and, when encrypted, the ZFS
 passphrase are confirmed before final review; only set/unset is displayed.
 ZFSBootMenu uses a US keyboard for unlocking. Restart clears all answers and
-secrets while keeping successfully installed live prerequisites.
+secrets. Restart and Exit do not install live prerequisites or contact package
+sources.
 
 Choose **Run desktop deployment too? (y/n)** (default yes):
 
@@ -62,12 +68,14 @@ private mount namespace so live service namespaces cannot retain target mounts.
 
 The stage display shows completed steps, the running step and a rolling window
 of recent output. Small terminals show a count of earlier completed stages;
-the full history remains in the log. Resizing is handled on the next redraw.
-Unsuitable terminals use plain output. Untruncated, timestamped logs are kept
-with mode 0600 under `/var/log/debianzfs-install/` in the live environment. If an
-unused Linux virtual terminal can be allocated safely, its number and switching
-instructions appear above the UI. Switch with **Ctrl+Alt+Fn**; return to your
-original installer TTY. Allocation never switches focus or overwrites an
+the full history remains in the log. Each progress frame fits inside the
+terminal, and resizing is handled on the next redraw. Unsuitable terminals show
+concise plain stage statuses; command output stays in the full log and appears
+on failure. Untruncated, timestamped logs are kept with mode 0600 under
+`/var/log/debianzfs-install/` in the live environment. If an
+unused Linux virtual terminal can be allocated safely after Start, its number
+and switching instructions appear above the UI. Switch with **Ctrl+Alt+Fn**;
+return to your original installer TTY. Allocation never switches focus or overwrites an
 occupied VT. Without a spare VT, file logging continues.
 
 Before unmounting, the log is also copied under `/var/log/debianzfs-install/` in

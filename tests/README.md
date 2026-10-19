@@ -13,7 +13,11 @@ BIOS early stop, HTTPS error propagation, busy/small/duplicate/partition disk
 rejection, stage order, networking/DHCP, policy restoration, same-shell state,
 nested/pipeline failures, export failures, cleanup retries, mirrored ESP mount options, full logs and permissions. PTY tests
 exercise verbose output, stage transitions, resize, interrupt, cursor restore
-and no-spare-VT fallback. They never execute installation on the host.
+and no-spare-VT fallback. Startup regression tests cover configuration before
+network/package work, restart/exit, Secure Boot detection, rejected module
+signatures, compact final review, control-sequence filtering, bounded frames
+and renderer shutdown without stale writes. They never execute installation
+on the host.
 
 Syntax/static checks:
 
@@ -59,7 +63,7 @@ filesystems to the guest. A container may expose `/dev/kvm` for acceleration
 while QEMU sees only `/tmp` disk images and read-only ISO/repository mounts.
 No host installation or physical-GPU validation is implied by these tests.
 
-## Results for v1.0.0 (2026-10-19)
+## Initial v1.0.0 implementation (033b629, 2026-10-19)
 
 - Bash syntax checks and ShellCheck 0.11.0 passed for installer, libraries,
   deployment and test scripts.
@@ -92,6 +96,26 @@ No host installation or physical-GPU validation is implied by these tests.
   export; the installer now owns a recursively private mount namespace. Cleanup
   retries also avoid writing logs beneath an already-unmounted target. Both
   cases are covered by regression checks and the subsequent guest export.
+
+## Startup and display follow-up (2026-10-19)
+
+- All 26 functional/PTY tests passed on the development host and in a fresh
+  Debian Trixie container. Deployment dry runs passed for all five GPU profiles.
+- Bash syntax checks and ShellCheck 0.11.0 passed for the installer, libraries,
+  deployment and test scripts; `git diff --check` passed.
+- A minimal Debian container without `loadkeys`, `setupcon` or XKB layout data
+  accepted the initial console-keyboard choice without installing packages.
+  Definitive validation remains after dependency installation and before disk
+  changes.
+- PTY tests exercised verbose output at 90 columns, resize to 65 columns,
+  stage transitions and interrupt. Frame fixtures also checked 40 columns /
+  10 rows, control-sequence removal, standard-console final review and waiting
+  for an in-flight renderer pipeline before returning from a stage.
+- Secure Boot enabled/disabled detection used EFI-variable fixtures. Module
+  signature rejection used a mocked `modprobe`; actual firmware/signing-key
+  enrollment was not tested. This installer requires Secure Boot disabled.
+- The full UEFI guest installations above apply to the initial implementation.
+  They were not repeated for this startup/display change.
 
 Physical GPU tests (especially NVIDIA), Secure Boot enrollment, VMware guest
 integration, and physical-machine installation were not performed. GPU profiles

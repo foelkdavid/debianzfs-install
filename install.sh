@@ -388,6 +388,35 @@ install_zfs_autosnap() {
 }
 
 
+run_guided_installation() {
+    local rc
+    run_prechecks
+    while :; do
+        reset_configuration
+        get_inputs
+        print_preconf_header
+        if confirm_menu; then rc=0; else rc=$?; fi
+        case $rc in
+            10) continue ;;
+            20) return 0 ;;
+            0) INSTALL_CONFIRMED=true; break ;;
+        esac
+    done
+    allocate_log_vt
+    run_stage 'Check DNS and HTTPS sources' source_connectivity_check
+    run_stage 'Prepare live dependencies' install_host_requirements
+    run_stage 'Validate ZFS and installation tools' validate_live_tools
+    run_installation
+    # EXIT also handles failures, but success is only printed after export.
+    run_stage 'Restore policies and clean up / export pool' cleanup_target
+    CLEANED=true
+    printf '\nInstallation finished. Reboot and log in as %s.\n' "$DEBIAN_SUDOUSER" >&3
+    if [[ $DEBIAN_DESKTOP == true ]]; then
+        printf 'Hyprland starts after interactive TTY1 login; exiting it returns to your shell.\n' >&3
+    fi
+    printf 'Complete live log: %s\n' "$LOG_FILE" >&3
+}
+
 main() {
     # Refuse before logging/apt/mounts on a normal developer workstation.
     [[ $EUID == 0 ]] || { failhard 'Run as root from Debian 13 live media.'; return 1; }
@@ -406,29 +435,7 @@ main() {
     trap 'exit "$?"' ERR
     exec 9>/run/debianzfs-install.lock
     flock -n 9 || { failhard 'Another installer is running.'; return 1; }
-    run_prechecks
-    run_stage 'Prepare live dependencies' install_host_requirements
-    run_stage 'Validate ZFS and installation tools' validate_live_tools
-    while :; do
-        reset_configuration
-        get_inputs
-        print_preconf_header
-        if confirm_menu; then rc=0; else rc=$?; fi
-        case $rc in
-            10) continue ;;
-            20) return 0 ;;
-            0) INSTALL_CONFIRMED=true; break ;;
-        esac
-    done
-    run_installation
-    # EXIT also handles failures, but success is only printed after export.
-    run_stage 'Restore policies and clean up / export pool' cleanup_target
-    CLEANED=true
-    printf '\nInstallation finished. Reboot and log in as %s.\n' "$DEBIAN_SUDOUSER" >&3
-    if [[ $DEBIAN_DESKTOP == true ]]; then
-        printf 'Hyprland starts after interactive TTY1 login; exiting it returns to your shell.\n' >&3
-    fi
-    printf 'Complete live log: %s\n' "$LOG_FILE" >&3
+    run_guided_installation
 }
 
 # Sourceable for fixtures; executing this file always performs the live checks.

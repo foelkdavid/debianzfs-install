@@ -1,13 +1,15 @@
 # Installation walkthrough
 
 1. Download an official [Debian 13 amd64 live image](https://www.debian.org/CD/live/).
-   Boot it in UEFI mode. BIOS mode is displayed, then stops because support is
-   pending. Use live media rather than an installer rescue shell.
+   Disable Secure Boot in firmware, then boot it in UEFI mode. BIOS mode is
+   displayed, then stops because support is pending. Use live media rather than
+   an installer rescue shell.
 2. Connect the live environment to the internet (wired or Wi-Fi), then install
    `git`, `ca-certificates` and `curl`. Clone this repository's `v1.0.0` branch.
-3. Run `sudo ./install.sh`. Review the visible preflight checklist and wait for
-   live dependencies and ZFS kernel support to be prepared. The display always
-   identifies the detected boot mode and the log location.
+3. Run `sudo ./install.sh`. Quick local checks lead straight to configuration;
+   no package updates or downloads run before you finish the questions. The
+   display identifies the detected boot mode and log location. If Secure Boot
+   is enabled, reboot and disable it in UEFI firmware before continuing.
 4. Answer each question. Select whole disks you intend to **erase**. A mirror
    uses two distinct disks; swap is optional (`0`/`none` disables it). Select
    ZFS encryption (default yes), hostname, account and timezone. The console
@@ -20,8 +22,10 @@
    passphrase you can type with ZFSBootMenu's US keyboard. Values are hidden
    and never logged. Review the entire summary, especially the ERASE disks.
 7. Choose **Start installation**, **Restart configuration**, or **Exit**.
-   Restart clears all answers and secrets without reinstalling live tools.
-   Disk partitioning begins only after Start and a fresh disk-safety check.
+   Restart clears all answers and secrets; Exit leaves packages and disks alone.
+   After Start, the installer checks connectivity, updates packages, prepares
+   live dependencies and validates ZFS. Disk partitioning follows a fresh
+   disk-safety check. There are no further configuration questions.
 8. Follow the stage display. Recent command output appears below completed
    stages; full logs remain in `/var/log/debianzfs-install/` in the live system.
    If a spare VT was allocated, use the displayed Ctrl+Alt+Fn shortcut to view

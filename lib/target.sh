@@ -219,7 +219,7 @@ installer_exit() {
     drain_stage
     if ((result)); then
         printf '\n[failed] %s (exit %s)\n' "$CURRENT_STAGE" "$result" >&3
-        tail -n 20 "$STAGE_OUTPUT" >&3
+        tail -n 20 "$STAGE_OUTPUT" | sanitize_output >&3
         printf '[%s] [failed] %s (exit %s)\n' "$(date -u +%FT%TZ)" "$CURRENT_STAGE" "$result" >> "$LOG_FILE"
     fi
     if [[ ${CLEANED:-false} != true ]]; then

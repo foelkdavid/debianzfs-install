@@ -48,45 +48,99 @@ https_check() {
 
 source_connectivity_check() {
     local host
-    for host in deb.debian.org security.debian.org get.zfsbootmenu.org; do
+    local mirror_host=${DEBIAN_MIRROR#*://}
+    mirror_host=${mirror_host%%/*}
+    mirror_host=${mirror_host%%:*}
+    for host in "$mirror_host" security.debian.org get.zfsbootmenu.org; do
         getent ahosts "$host" >/dev/null || return 1
     done
-    https_check https://deb.debian.org/debian/dists/trixie/Release \
+    https_check "${DEBIAN_MIRROR%/}/dists/trixie/Release" \
         https://security.debian.org/debian-security/dists/trixie-security/Release \
         https://get.zfsbootmenu.org/efi/release
 }
 
+secure_boot_enabled() {
+    local file value
+    # EFI variable payload follows four attribute bytes. This needs no packages
+    # and also works when mokutil is absent on the live image.
+    for file in "${1:-/sys/firmware/efi/efivars}"/SecureBoot-*; do
+        [[ -r $file ]] || continue
+        value=$(od -An -j4 -N1 -tu1 "$file") || return
+        [[ ${value//[[:space:]]/} == 1 ]]
+        return
+    done
+    command -v mokutil >/dev/null || return 1
+    local status
+    status=$(LC_ALL=C mokutil --sb-state 2>/dev/null || true)
+    [[ $status == *'SecureBoot enabled'* ]]
+}
+
+secure_boot_check() {
+    if secure_boot_enabled; then
+        failhard 'Secure Boot is enabled. Disable Secure Boot in UEFI firmware, then boot the live image again.'
+        failhard 'This installer does not enroll ZFS / ZFSBootMenu signing keys.'
+        failhard 'No packages or disks have been changed.'
+        return 1
+    fi
+}
+
+preflight_content() {
+    header_content
+    local j
+    for j in "${!labels[@]}"; do printf '[%s] %s\n' "${states[j]}" "${labels[j]}"; done
+    if [[ -s $WORK_DIR/preflight.log ]]; then cat "$WORK_DIR/preflight.log"; fi
+}
+
 run_prechecks() {
-    local -a labels=('Root privileges' 'Detected boot mode' 'Debian 13 live / amd64' 'Required bundled files' 'DNS and HTTPS sources')
-    local -a checks=('root' 'boot' 'live' 'files' 'network')
+    # Only quick, local checks precede configuration. Network/package work is
+    # deferred until the user has entered everything and explicitly starts.
+    local -a labels=('Root privileges' 'Detected boot mode' 'Debian 13 live / amd64' 'Required bundled files' 'Secure Boot compatibility')
+    local -a checks=('root' 'boot' 'live' 'files' 'secureboot')
     local -a states=(pending pending pending pending pending)
-    local i j result=0
+    local i result=0
+    : > "$WORK_DIR/preflight.log"
+    "$UI_TTY" || screen_header
     for i in "${!checks[@]}"; do
         CURRENT_STAGE="Preflight: ${labels[i]}"
         states[i]=running
-        screen_header
-        for j in "${!labels[@]}"; do printf '[%s] %s\n' "${states[j]}" "${labels[j]}" >&3; done
+        if "$UI_TTY"; then terminal_size; preflight_content | draw_frame; fi
         # Functions in this conditional must explicitly propagate each error.
         case ${checks[i]} in
             root) root_privileges_check && result=0 || result=1 ;;
             boot) result=0 ;; # BIOS is a detected mode, not a detection failure.
             live) live_environment_check && result=0 || result=1 ;;
             files) bundled_files_check && result=0 || result=1 ;;
-            network) source_connectivity_check && result=0 || result=1 ;;
+            secureboot) secure_boot_check && result=0 || result=1 ;;
         esac > "$WORK_DIR/preflight.log" 2>&1
-        cat "$WORK_DIR/preflight.log" >&3
         cat "$WORK_DIR/preflight.log" >> "$LOG_FILE"
         if ((result)); then states[i]=failed; else states[i]=passed; fi
+        if "$UI_TTY"; then
+            preflight_content | draw_frame
+        else
+            printf '[%s] %s\n' "${states[i]}" "${labels[i]}" >&3
+            cat "$WORK_DIR/preflight.log" >&3
+        fi
         printf '[%s] [%s] %s\n' "$(date -u +%FT%TZ)" "${states[i]}" "${labels[i]}" >> "$LOG_FILE"
-        ((result == 0)) || { failhard "Preflight: ${labels[i]}"; return 1; }
+        ((result == 0)) || { printf '\n' >&3; failhard "Preflight: ${labels[i]}"; return 1; }
         if [[ ${checks[i]} == boot && $BOOT_MODE == 'Legacy BIOS' ]]; then
-            screen_header
-            printf '[passed] Boot mode detected: Legacy BIOS\nBIOS installation support is pending another branch. No installation changes made.\n' >&3
+            printf '\nBIOS installation support is pending another branch. No installation changes made.\n' >&3
             return 1
         fi
     done
-    screen_header
-    for j in "${!labels[@]}"; do printf '[%s] %s\n' "${states[j]}" "${labels[j]}" >&3; done
+    COMPLETED+=('Local preflight checks')
+}
+
+try_load_zfs() {
+    local result
+    if LC_ALL=C modprobe zfs > "$WORK_DIR/modprobe.log" 2>&1; then return 0; else result=$?; fi
+    cat "$WORK_DIR/modprobe.log"
+    if grep -Eqi 'key was rejected|key.*not available|required key|operation not permitted|permission denied' "$WORK_DIR/modprobe.log"; then
+        failhard 'The kernel refused the ZFS module signature or loading policy.'
+        failhard 'Disable Secure Boot in UEFI firmware and reboot the live image. If already disabled, use a live kernel without enforced module signatures/lockdown, or enroll trusted signing keys manually.'
+        # Distinct status prevents a pointless DKMS rebuild of a rejected module.
+        return 125
+    fi
+    return "$result"
 }
 
 install_host_requirements() {
@@ -101,10 +155,13 @@ EOF
         ca-certificates debootstrap gdisk dosfstools rsync inotify-tools parted \
         util-linux kmod curl kbd psmisc console-setup keyboard-configuration xkb-data \
         openssl mokutil zfsutils-linux procps
-    if ! modprobe zfs; then
+    local module_result
+    if try_load_zfs; then module_result=0; else module_result=$?; fi
+    if ((module_result == 125)); then return 1; fi
+    if ((module_result)); then
         DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             dkms "linux-headers-$(uname -r)" zfs-dkms
-        modprobe zfs
+        try_load_zfs
     fi
 }
 
@@ -114,8 +171,10 @@ validate_live_tools() {
         mkfs.vfat rsync chroot runuser blkid findmnt lsblk blockdev flock curl fuser swapon mountpoint; do
         command -v "$tool" >/dev/null || { failhard "Missing tool: $tool"; return 1; }
     done
-    modprobe zfs
+    try_load_zfs
     [[ -d /sys/module/zfs ]]
+    validate_keymap "$DEBIAN_KEYMAP" || { failhard "Unknown console keyboard: $DEBIAN_KEYMAP"; return 1; }
+    apply_keymap
 }
 
 reset_configuration() {
@@ -129,7 +188,7 @@ reset_configuration() {
 
 print_preconf_header() {
     screen_header
-    printf 'Configuration — Debian %s / amd64\n' "$DEBIAN_RELEASE" >&3
+    printf 'Configuration - Debian %s / amd64\n' "$DEBIAN_RELEASE" >&3
     printf '  Console keyboard: %-12s IPv4 DHCP: %s\n' "${DEBIAN_KEYMAP:-unset}" "${DEBIAN_ENABLE_DHCP:-unset}" >&3
     printf '  ERASE disk 1: %s\n  ERASE disk 2: %s\n' "${DEBIAN_DISK1:-unset}" "${DEBIAN_DISK2:-unset}" >&3
     printf '  ZFS mirror: %-18s Swap GiB per disk: %s\n' "${DEBIAN_MIRROR_MODE:-unset}" "${DEBIAN_SWAPSIZE:-unset}" >&3
@@ -137,7 +196,7 @@ print_preconf_header() {
     printf '  ZFS encryption: %s\n' "${DEBIAN_ENCRYPTION:-unset}" >&3
     printf '  Hostname: %-20s Username: %s\n' "${DEBIAN_HOSTNAME:-unset}" "${DEBIAN_SUDOUSER:-unset}" >&3
     printf '  Timezone: %s\n' "${DEBIAN_TIMEZONE:-unset}" >&3
-    printf '  Desktop deployment: %-10s GPU profile: %s\n' "${DEBIAN_DESKTOP:-unset}" "${GPU_DRIVER:-unset}" >&3
+    printf '  Desktop: %-21s GPU profile: %s\n' "${DEBIAN_DESKTOP:-unset}" "${GPU_DRIVER:-unset}" >&3
     printf '  VM integration: %-14s Software rendering: %s\n' "${VM_GUEST:-unset}" "${VM_SOFTWARE_RENDERING:-unset}" >&3
     printf '  Account password: %-12s ZFS passphrase: %s\n' \
         "$([[ -n ${USER_PASSWORD:-} ]] && echo set || echo unset)" \
@@ -174,14 +233,21 @@ validate_username() { [[ $1 =~ ^[a-z_][a-z0-9_-]{0,31}$ && $1 != root ]]; }
 validate_timezone() { [[ $1 != /* && $1 != *..* && -f /usr/share/zoneinfo/$1 ]]; }
 validate_keymap() {
     [[ $1 =~ ^[A-Za-z][A-Za-z0-9_-]*$ ]] || return 1
-    loadkeys -q "$1" >/dev/null 2>&1 && return 0
-    [[ -f /usr/share/X11/xkb/rules/base.lst ]] || return 1
-    awk '$1=="!" { layout=($2=="layout"); next } layout && $1==key { found=1 } END {exit !found}' \
-        key="$1" /usr/share/X11/xkb/rules/base.lst
+    # Parse only; validating an answer must not change the keyboard mapping.
+    if command -v loadkeys >/dev/null; then loadkeys -b "$1" >/dev/null 2>&1 && return 0; fi
+    if [[ -f /usr/share/X11/xkb/rules/base.lst ]]; then
+        awk '$1=="!" { layout=($2=="layout"); next } layout && $1==key { found=1 } END {exit !found}' \
+            key="$1" /usr/share/X11/xkb/rules/base.lst
+        return
+    fi
+    # Minimal live images may not have keymap data yet. Definitive validation
+    # runs after dependencies are installed, still before disk changes.
+    ! command -v loadkeys >/dev/null
 }
 
 apply_keymap() {
     if loadkeys "$DEBIAN_KEYMAP" >/dev/null 2>&1; then return 0; fi
+    command -v setupcon >/dev/null || return 0
     cat > /etc/default/keyboard <<EOF
 XKBMODEL="pc105"
 XKBLAYOUT="$DEBIAN_KEYMAP"
@@ -289,6 +355,7 @@ get_inputs() {
 confirm_menu() {
     local answer
     printf 'The ERASE disks above will be completely wiped.\n' >&3
+    printf 'After Start: connectivity checks, live packages, ZFS, then installation.\n' >&3
     while :; do
         read -r -p '[s] Start installation  [r] Restart configuration  [e] Exit: ' answer || return 20
         case ${answer,,} in s|start) return 0 ;; r) return 10 ;; e) return 20 ;; esac

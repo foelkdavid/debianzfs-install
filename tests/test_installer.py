@@ -108,6 +108,86 @@ run_installation
                 self.assertLess(output.index('Deploy Hyprland desktop'), output.index('Rebuild final initramfs'))
                 self.assertLess(output.index('Rebuild final initramfs'), output.index('Synchronize mirrored ESPs'))
 
+    def test_configuration_and_restart_precede_all_preparation(self):
+        fixture = self.ui() + '''
+root_privileges_check() { :; }
+live_environment_check() { :; }
+secure_boot_check() { :; }
+get_inputs() {
+    [[ ! -v USER_PASSWORD && ! -v GPU_DRIVER && ! -v INSTALL_CONFIRMED ]] || exit 12
+    echo ANSWERS
+    DEBIAN_DESKTOP=false DEBIAN_SUDOUSER=fixture
+    USER_PASSWORD=private GPU_DRIVER=vm
+}
+allocate_log_vt() { echo VT-ALLOCATION; }
+source_connectivity_check() { echo NETWORK; }
+install_host_requirements() { echo PACKAGES; }
+validate_live_tools() { echo ZFS-VALIDATION; }
+run_installation() { [[ $INSTALL_CONFIRMED == true ]]; echo INSTALLATION; }
+cleanup_target() { echo CLEANUP; }
+run_stage() { printf 'STAGE:%s\\n' "$1"; shift; "$@"; }
+run_guided_installation
+'''
+        out = self.bash(fixture, 'r\ns\n')
+        self.assertEqual(out.count('ANSWERS'), 2)
+        markers = ('VT-ALLOCATION', 'NETWORK', 'PACKAGES', 'ZFS-VALIDATION', 'INSTALLATION')
+        for marker in markers:
+            self.assertGreater(out.index(marker), out.rindex('ANSWERS'))
+        self.assertEqual([out.index(x) for x in markers], sorted(out.index(x) for x in markers))
+        out = self.bash(fixture, 'e\n')
+        for marker in markers: self.assertNotIn(marker, out)
+        self.assertEqual(out.count('[passed] Root privileges'), 1)
+        self.assertNotIn('[pending]', out)
+        self.assertNotIn('\x1b', out)
+
+    def test_secure_boot_check_before_configuration_or_packages(self):
+        directory = self.root / 'efi'
+        directory.mkdir()
+        variable = directory / 'SecureBoot-fixture'
+        for enabled in (0, 1):
+            variable.write_bytes(b'\x07\x00\x00\x00' + bytes([enabled]))
+            self.bash('secure_boot_enabled "$TEST_ROOT/efi"', expected=0 if enabled else 1)
+        out = self.bash(self.ui() + '''
+root_privileges_check() { :; }
+live_environment_check() { :; }
+secure_boot_enabled() { return 0; }
+get_inputs() { echo UNEXPECTED-QUESTIONS; }
+install_host_requirements() { echo UNEXPECTED-PACKAGES; }
+run_guided_installation
+''', expected=1)
+        self.assertIn('Disable Secure Boot in UEFI firmware', out)
+        self.assertIn('No packages or disks have been changed', out)
+        self.assertNotIn('UNEXPECTED-', out)
+
+    def test_rejected_zfs_module_does_not_trigger_rebuild(self):
+        out = self.bash(self.ui() + '''
+HOST_APT_SOURCE="$TEST_ROOT/sources.list"
+apt-get() { printf 'APT:%s\\n' "$*"; }
+modprobe() { echo 'modprobe: Key was rejected by service' >&2; return 1; }
+run_stage preparation install_host_requirements
+echo UNEXPECTED-SUCCESS
+''', expected=1)
+        self.assertIn('Disable Secure Boot', out)
+        self.assertNotIn('UNEXPECTED-SUCCESS', out)
+        log = next((self.root / 'logs').glob('*.log')).read_text()
+        self.assertNotIn('linux-headers-', log)
+        self.assertNotIn('zfs-dkms', log)
+
+    def test_keymap_validation_only_parses_and_missing_tools_are_deferred(self):
+        out = self.bash('''
+loadkeys() { echo "LOADKEYS:$*" >> "$TEST_ROOT/keymap-commands"; return 0; }
+validate_keymap de-latin1
+! validate_keymap 'invalid;key'
+cat "$TEST_ROOT/keymap-commands"
+''')
+        self.assertEqual(out.strip(), 'LOADKEYS:-b de-latin1')
+        self.bash('''
+command() { [[ $* != '-v setupcon' ]]; }
+loadkeys() { return 127; }
+DEBIAN_KEYMAP=us
+apply_keymap
+''')
+
     def test_no_destructive_work_without_start(self):
         output = self.bash('''
 wipe_disks() { echo ERASED; }
@@ -228,7 +308,7 @@ false
         self.assertEqual(policy.stat().st_mode & 0o777, 0o711)
 
     def test_stage_preserves_state_and_full_log(self):
-        self.bash(self.ui() + '''
+        output = self.bash(self.ui() + '''
 one() { STATE=retained; for ((i=0;i<150;i++)); do echo "verbose-line-$i"; done; }
 two() { [[ $STATE == retained ]]; echo next-stage; }
 run_stage first one
@@ -241,6 +321,8 @@ run_stage second two
         self.assertIn("verbose-line-0", text)
         self.assertIn("verbose-line-149", text)
         self.assertIn("next-stage", text)
+        self.assertNotIn('verbose-line-', output)
+        self.assertNotIn('next-stage', output)
 
     def test_occupied_vt_falls_back_without_force_or_switch(self):
         output = self.bash('''
@@ -248,6 +330,7 @@ BOOT_MODE=UEFI LOG_DIR="$TEST_ROOT/logs"
 fgconsole() { echo 1; }
 openvt() { printf '%s\\n' "$*" > "$TEST_ROOT/vt-arguments"; return 1; }
 ui_init
+allocate_log_vt
 printf '%s\\n' "$VT_STATUS"
 ui_restore
 rm -rf -- "$WORK_DIR"
@@ -258,6 +341,55 @@ rm -rf -- "$WORK_DIR"
         self.assertNotIn('-s', arguments)
         self.assertNotIn('--force', arguments)
         self.assertNotIn('--switch', arguments)
+
+    def test_small_stage_frame_removes_controls_and_never_scrolls(self):
+        out = self.bash(self.ui() + r'''
+terminal_size() { UI_ROWS=10 UI_COLS=40; }
+COMPLETED=()
+for ((i=0;i<40;i++)); do COMPLETED+=("Earlier step $i"); done
+CURRENT_STAGE='Install packages with a long description'
+CURRENT_STATE=running
+printf '\033]0;untrusted title\007\033[31mprogress\ttext\r\033[0m\n' > "$STAGE_OUTPUT"
+render_stage
+''')
+        frame = re.search(r'\x1b\[H(.*?)\x1b\[J', out, re.S).group(1)
+        self.assertIn('[running] Install packages', frame)
+        self.assertIn('progress    text', frame)
+        self.assertNotIn('untrusted title', frame)
+        self.assertNotRegex(frame, r'[\x00-\x09\x0b-\x1f\x7f]')
+        self.assertLessEqual(len(frame.splitlines()), 9)
+        self.assertLessEqual(max(map(len, frame.splitlines())), 39)
+
+    def test_final_summary_and_start_prompt_fit_standard_console(self):
+        out = self.bash(self.ui() + '''
+reset_configuration
+DEBIAN_DISK1=/dev/nvme0n1 DEBIAN_DISK2=/dev/nvme1n1
+DEBIAN_HOSTNAME=debian DEBIAN_SUDOUSER=fixture
+DEBIAN_KEYMAP=de-latin1 DEBIAN_TIMEZONE=Europe/Vienna
+DEBIAN_DESKTOP=true GPU_DRIVER=vm VM_GUEST=qemu VM_SOFTWARE_RENDERING=true
+USER_PASSWORD=private ZFS_PASSPHRASE=private
+print_preconf_header
+confirm_menu
+''', 's\n')
+        summary = out.split('Live log retained:')[0]
+        # read -p only emits its prompt with a terminal; account for it here.
+        lines = summary.splitlines() + ['[s] Start installation  [r] Restart configuration  [e] Exit: ']
+        self.assertLessEqual(sum(max(1, (len(line) + 79) // 80) for line in lines), 23)
+        self.assertNotIn('private', summary)
+
+    def test_renderer_finishes_inflight_frame_before_stage_returns(self):
+        out = self.bash(self.ui() + '''
+UI_TTY=true
+render_stage() {
+    { touch "$WORK_DIR/frame-started"; sleep .2; echo FINISHED-FRAME; } | cat >&3
+}
+wait_for_frame() { while [[ ! -e $WORK_DIR/frame-started ]]; do sleep .01; done; }
+run_stage first wait_for_frame
+echo STAGE-RETURNED
+sleep .3
+''')
+        self.assertIn('FINISHED-FRAME', out)
+        self.assertLess(out.rindex('FINISHED-FRAME'), out.index('STAGE-RETURNED'))
 
     def test_nested_failure_and_pipeline_stop_later_stages(self):
         for command in ("false", "printf x | (exit 7)"):
@@ -311,6 +443,7 @@ persist_target_log
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 90, 0, 0))
         env = dict(os.environ, TEST_ROOT=str(self.root), REPO=str(REPO), TERM="xterm")
         script = 'source "$REPO/install.sh"\n' + self.ui() + '''
+allocate_log_vt
 verbose() { for ((i=0;i<100;i++)); do echo "output-$i"; done; printf '%0200d\\n' 0; sleep .8; }
 run_stage first verbose
 run_stage second sleep 20
@@ -324,7 +457,7 @@ run_stage second sleep 20
         while time.monotonic() < deadline:
             if select.select([master], [], [], .1)[0]:
                 output += os.read(master, 65536)
-            if b"0" * 90 in output and not resized:
+            if b"0" * 89 in output and not resized:
                 fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 18, 65, 0, 0))
                 os.killpg(proc.pid, signal.SIGWINCH)
                 resized = True
@@ -340,9 +473,15 @@ run_stage second sleep 20
         self.assertIn("[running] second", text)
         self.assertIn("[failed] second", text)
         self.assertIn("\x1b[?25h", text)
-        widths = {len(line) for line in text.replace('\r', '').splitlines() if re.fullmatch('0+', line)}
-        self.assertIn(90, widths)
-        self.assertIn(65, widths)
+        widths = {len(line) for line in re.findall(r'(?:^|\n)(0+)(?=\r?\n|\x1b\[J)', text)}
+        self.assertIn(89, widths)
+        self.assertIn(64, widths)
+        for frame in re.findall(r'\x1b\[H(.*?)\x1b\[J', text, flags=re.S):
+            lines = frame.replace('\r', '').splitlines()
+            limit = 64 if '0' * 64 in lines else 89
+            height = 17 if limit == 64 else 23
+            self.assertLessEqual(len(lines), height)
+            self.assertLessEqual(max(map(len, lines), default=0), limit)
         log = next((self.root / "logs").glob("*.log"))
         self.assertIn("output-0", log.read_text())
         self.assertIn("output-99", log.read_text())

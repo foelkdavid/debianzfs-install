@@ -19,11 +19,11 @@ ui_init() {
     WORK_DIR=$(mktemp -d)
     STAGE_OUTPUT="$WORK_DIR/stage.log"
     : > "$STAGE_OUTPUT"
-    VT_STATUS='File logging only (no unused Linux VT available)'
-    allocate_log_vt
+    VT_STATUS='Full log VT will be allocated after Start.'
 }
 
 allocate_log_vt() {
+    VT_STATUS='File logging only (no unused Linux VT available)'
     # openvt without -f/-s uses VT_OPENQRY, refuses occupied VTs and never
     # switches focus. Let it retain the allocated console until tail exits.
     command -v openvt >/dev/null || return 0
@@ -45,46 +45,79 @@ allocate_log_vt() {
     if [[ -s "$WORK_DIR/log-vt" ]]; then
         local device
         read -r device < "$WORK_DIR/log-vt"
-        VT_STATUS="Full log: ${device} — Ctrl+Alt+F${device##*/tty} (return to your installer TTY)"
+        VT_STATUS="Full log: Ctrl+Alt+F${device##*/tty}; return to your installer TTY."
     fi
+}
+
+header_content() {
+    printf 'Debian ZFS installer | Boot mode: %s\n%s\nLog: %s\n\n' \
+        "$BOOT_MODE" "$VT_STATUS" "$LOG_FILE"
+}
+
+terminal_size() {
+    # Ignore exported shell dimensions; query the actual terminal after resize.
+    UI_ROWS=$(env -u LINES -u COLUMNS tput lines <&3 2>/dev/null || echo 24)
+    UI_COLS=$(env -u LINES -u COLUMNS tput cols <&3 2>/dev/null || echo 80)
+    [[ $UI_ROWS =~ ^[0-9]+$ && $UI_ROWS -ge 3 ]] || UI_ROWS=24
+    [[ $UI_COLS =~ ^[0-9]+$ && $UI_COLS -ge 2 ]] || UI_COLS=80
+}
+
+sanitize_output() {
+    # Package progress may contain CRs, tabs, colour codes and OSC sequences.
+    # Keep those controls out of the UI; the complete original stays in the log.
+    LC_ALL=C sed -E 's/\x1B\][^\x07]*(\x07|\x1B\\)//g; s/\x1B\[[0-?]*[ -/]*[@-~]//g; s/\t/    /g; s/[^[:print:]]//g'
+}
+
+draw_frame() {
+    local frame
+    # Leave the last column and row unused: auto-wrap and a bottom-row newline
+    # otherwise scroll the terminal. Emit one frame, without a trailing LF.
+    frame=$(sanitize_output | LC_ALL=C awk -v width="$((UI_COLS - 1))" -v height="$((UI_ROWS - 1))" \
+        'NR <= height { print substr($0, 1, width) }')
+    printf '\033[H%s\033[J' "$frame" >&3
 }
 
 screen_header() {
-    "$UI_TTY" && printf '\033[H\033[2J' >&3
-    printf 'Debian ZFS installer | Boot mode: %s\n%s\nLog: %s\n\n' \
-        "$BOOT_MODE" "$VT_STATUS" "$LOG_FILE" >&3
+    if "$UI_TTY"; then
+        terminal_size
+        local header
+        header=$(header_content)
+        printf '\033[H\033[2J%s\n\n' "$header" >&3
+    else
+        header_content >&3
+    fi
 }
 
 render_stage() {
-    local rows cols count window step visible start index
-    # Ignore exported shell dimensions; query the actual terminal after resize.
-    rows=$(env -u LINES -u COLUMNS tput lines <&3 2>/dev/null || echo 24)
-    cols=$(env -u LINES -u COLUMNS tput cols <&3 2>/dev/null || echo 80)
+    local count window visible start index
+    terminal_size
     count=${#COMPLETED[@]}
-    visible=$((rows / 3))
+    visible=$((UI_ROWS / 3))
+    ((visible <= UI_ROWS - 10)) || visible=$((UI_ROWS > 10 ? UI_ROWS - 10 : 0))
     ((visible <= count)) || visible=$count
     ((visible >= 0)) || visible=0
     start=$((count - visible))
-    window=$((rows - visible - 10))
-    ((window >= 2)) || window=2
-    screen_header
-    if ((start)); then printf '[passed] %s earlier stages (full list in log)\n' "$start" >&3; fi
-    for ((index=start; index<count; index++)); do
-        step=${COMPLETED[index]}
-        printf '[passed] %.*s\n' "$((cols > 10 ? cols - 10 : 1))" "$step" >&3
-    done
-    if [[ ${CURRENT_STATE:-running} == running ]]; then
-        printf '[running] %s\n\n' "$CURRENT_STAGE" >&3
-    else
-        printf '\n' >&3
-    fi
-    # Strip terminal controls from package output and bound both dimensions.
-    tail -n "$window" "$STAGE_OUTPUT" | LC_ALL=C sed -E 's/\x1B\[[0-?]*[ -/]*[@-~]//g; s/[^[:print:]\t]//g' | cut -c "1-$cols" >&3
+    window=$((UI_ROWS - visible - 8 - (start > 0)))
+    ((window >= 1)) || window=1
+    {
+        header_content
+        if ((start)); then printf '[passed] %s earlier stages (full list in log)\n' "$start"; fi
+        for ((index=start; index<count; index++)); do
+            printf '[passed] %s\n' "${COMPLETED[index]}"
+        done
+        if [[ ${CURRENT_STATE:-running} == running ]]; then
+            printf '[running] %s\n' "$CURRENT_STAGE"
+        fi
+        printf '\n'
+        tail -n "$window" "$STAGE_OUTPUT"
+    } | draw_frame
 }
 
 stop_renderer() {
     if [[ -n ${RENDER_PID:-} ]]; then
-        kill "$RENDER_PID" 2>/dev/null || true
+        # Let an in-flight frame finish before the parent draws another screen.
+        # Killing only the loop could leave its pipeline writing a stale frame.
+        : > "$WORK_DIR/render-stop"
         wait "$RENDER_PID" 2>/dev/null || true
         unset RENDER_PID
     fi
@@ -112,15 +145,15 @@ run_stage() {
         while IFS= read -r line || [[ -n $line ]]; do
             printf '[%s] %s\n' "$(date -u +%FT%TZ)" "$line" >> "$LOG_FILE"
             printf '%s\n' "$line" >> "$STAGE_OUTPUT"
-            "$UI_TTY" || printf '%s\n' "$line" >&3
         done < "$fifo"
     ) &
     LOGGER_PID=$!
     if "$UI_TTY"; then
+        rm -f -- "$WORK_DIR/render-stop"
         printf '\033[?25l' >&3
         (
             trap - ERR EXIT INT TERM
-            while :; do render_stage; sleep .2; done
+            while [[ ! -e $WORK_DIR/render-stop ]]; do render_stage; sleep .2; done
         ) &
         RENDER_PID=$!
     else
@@ -133,8 +166,12 @@ run_stage() {
     CURRENT_STATE=passed
     COMPLETED+=("$CURRENT_STAGE")
     printf '[%s] [passed] %s\n' "$(date -u +%FT%TZ)" "$CURRENT_STAGE" >> "$LOG_FILE"
-    if "$UI_TTY"; then render_stage; printf '\033[?25h' >&3; fi
-    printf '[passed] %s\n' "$CURRENT_STAGE" >&3
+    if "$UI_TTY"; then
+        render_stage
+        printf '\033[?25h' >&3
+    else
+        printf '[passed] %s\n' "$CURRENT_STAGE" >&3
+    fi
 }
 
 ui_restore() {
