@@ -35,7 +35,7 @@ printf "%-16s | %-19s | %s\n" "Job" "Last run (mtime)" "Next run (from now)"
 echo "--------------------------------------------------------------------------"
 
 grep -v '^[[:space:]]*\(#\|$\)' "$JOBS" |
-while IFS='|' read -r name dataset label sched keep slack flags; do
+while IFS='|' read -r name _dataset _label sched _keep _slack _flags; do
   name="$(printf '%s' "$name" | trim)"
   sched="$(printf '%s' "$sched" | trim)"
   tf="$STATE/${name}.timefile"

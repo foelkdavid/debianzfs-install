@@ -1,6 +1,7 @@
 [Unit]
 Description=Continuously sync primary EFI system partition to secondary ESP
 After=local-fs.target
+RequiresMountsFor=/boot/efi /boot/efi2
 ConditionPathIsDirectory=/boot/efi
 ConditionPathIsDirectory=/boot/efi2
 

@@ -6,7 +6,7 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-REQUIRED=(rsync inotifywait flock)
+REQUIRED=(rsync inotifywait flock mountpoint)
 for bin in "${REQUIRED[@]}"; do
   command -v "$bin" >/dev/null 2>&1 || {
     echo "Error: missing '$bin'." >&2
@@ -19,6 +19,12 @@ done
 : "${LOCK:=/run/efisync.lock}"
 
 do_sync() {
+  # Never delete the good ESP's files when a mirror disk is absent or an ESP
+  # was unmounted. The service retries safely after mount failures.
+  if ! mountpoint -q "$SRC" || ! mountpoint -q "$DST"; then
+    echo "Both ESPs must be mounted before synchronization." >&2
+    return 1
+  fi
   printf "[%(%F %T)T] syncing...\n" -1
   flock "$LOCK" rsync -a --delete -- "$SRC"/ "$DST"/
   printf "[%(%F %T)T] sync done.\n" -1

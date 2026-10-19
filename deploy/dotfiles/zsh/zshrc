@@ -1,0 +1,50 @@
+# source aliases files
+source "${XDG_CONFIG_HOME:-$HOME/.config}/zsh/aliases"
+
+# autocd into typed dir
+setopt autocd
+
+# enable autocolors
+autoload -U colors && colors
+
+# change colors for prompt etc.
+PS1="%B%{$fg[red]%}[%{$fg[yellow]%}%n%{$fg[green]%}@%{$fg[blue]%}%M %{$fg[magenta]%}%~%{$fg[red]%}]%{$reset_color%}$%b "
+ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=#777c66'
+
+# disable termfreeze on ctrl-s
+stty stop undef
+
+# move .zcompdump dir
+autoload -Uz compinit
+mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
+compinit -d "${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompdump-$ZSH_VERSION"
+
+# add ctrl+a and ctrl+e support
+bindkey -M viins '^a' beginning-of-line
+bindkey -M viins '^e' end-of-line
+bindkey '^[[1;5D' backward-word   # Ctrl+Left
+bindkey '^[[1;5C' forward-word    # Ctrl+Right
+
+# configure shell history
+HISTFILE=${XDG_CACHE_HOME:-$HOME/.cache}/zsh/histfile.txt
+HISTSIZE=10000
+SAVEHIST=10000
+
+# adding locations to PATH
+export PATH="$HOME/.local/scripts:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
+
+
+# import plugins
+zsh_plugin_dir=${XDG_DATA_HOME:-$HOME/.local/share}/zsh/plugins
+source "$zsh_plugin_dir/zsh-autosuggestions/zsh-autosuggestions.zsh"
+source "$zsh_plugin_dir/gitfast/gitfast.plugin.zsh"
+
+# SOURCE OVERRIDES
+if [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/zsh/overrides" ]; then
+    source "${XDG_CONFIG_HOME:-$HOME/.config}/zsh/overrides"
+fi
+
+# Load last, after completion, plugins and any user widget overrides.
+source "$zsh_plugin_dir/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+unset zsh_plugin_dir

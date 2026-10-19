@@ -44,10 +44,13 @@ next_epoch() {
 }
 
 label_prefix() {
+  # Labels contain literal $(date-format) syntax, not shell substitutions.
+  # shellcheck disable=SC2016
   printf '%s' "$1" | sed 's/\$(.*$//'
 }
 
 label_pattern() {
+  # shellcheck disable=SC2016
   patt="$(printf '%s' "$1" | sed -n 's/.*$(\([^)]*\)).*/\1/p')"
   [ -n "$patt" ] || patt="%Y%m%d-%H%M"
   printf '%s' "$patt"
