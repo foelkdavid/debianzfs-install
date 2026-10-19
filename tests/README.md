@@ -6,6 +6,18 @@ Host-safe functional and pseudo-terminal tests (Python 3 and Bash required):
 python3 tests/test_installer.py
 ```
 
+Terminal-emulator regressions additionally require the `pyte` Python package
+(`python3-pyte` on the Debian test system):
+
+```sh
+python3 tests/test_terminal.py
+```
+
+These tests check actual screen cells after redraws, short/long output,
+configuration-to-installation transitions, resize, changed terminal newline
+processing and interrupts during the first redraw. They use harmless stage
+fixtures; `pyte` is a test dependency, not an installer UI dependency.
+
 The tests source installer functions; disk, mount, ZFS, network and service
 operations are mocked. They cover desktop/no-desktop, all GPU profiles,
 encryption on/off, secret handling, restart reset, explicit-start gating,
@@ -134,6 +146,23 @@ No host installation or physical-GPU validation is implied by these tests.
 - VT allocation and completed-step history were removed at the user's request.
   The reference repository was read without modification. Full installations
   and physical GPU checks were not repeated for these interface changes.
+
+## Redraw regression fixes (2026-10-19)
+
+- The 27 functional/PTY tests passed on the host and Debian Trixie. Six new
+  terminal-emulator tests passed in Debian, including both `-onlcr` and
+  `-opost` modes and a resize from 80x24 to 50x12. Bash syntax checks,
+  ShellCheck 0.11.0 and `git diff --check` passed.
+- Before the fix, emulator tests reproduced stale configuration rows and
+  duplicate headings/log paths after terminal newline processing changed.
+  After the fix, screen cells contain exactly one heading and log path,
+  with blank rows and old trailing text fully cleared.
+- Tests also cover stage stdin isolation, exact terminal-mode restoration,
+  interrupting before command launch and full output logging. The FIFO reader
+  is opened before launch so interrupts and very short stages cannot strand
+  the logger waiting for an output writer.
+- Full guest installations and physical GPU validation were not repeated for
+  this display/runner change.
 
 Physical GPU tests (especially NVIDIA), Secure Boot enrollment, VMware guest
 integration, and physical-machine installation were not performed. GPU profiles

@@ -72,7 +72,8 @@ values in aligned `-> [ value ]` rows, purple stage headings and blue notes.
 Configuration still collects all answers before package preparation starts.
 During installation, only the current heading and the latest **five lines** of
 its output are shown. Each stage clears the previous output; the display stays
-within the terminal bounds and adapts when resized. There is no completed-step
+within the terminal bounds and adapts when resized. Every row is erased before
+redrawing, including blank rows and shorter output. There is no completed-step
 list or separate log VT. Unsuitable terminals show plain headings and up to
 five recent lines at each stage's end. Set `NO_COLOR=1` to disable colors.
 

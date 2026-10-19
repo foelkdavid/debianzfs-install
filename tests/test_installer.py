@@ -17,6 +17,11 @@ import unittest
 REPO = Path(__file__).resolve().parents[1]
 
 
+def frame_rows(frame):
+    return [re.sub(r'\x1b\[[0-9;]*m', '', line)
+            for line in re.split(r'\x1b\[\d+;1H\x1b\[2K', frame)[1:]]
+
+
 class InstallerTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="debianzfs-tests-")
@@ -346,7 +351,7 @@ CURRENT_STAGE='Install packages with a long description'
 printf '\033]0;untrusted title\007\033[31mprogress\ttext\r\033[0m\n' > "$STAGE_OUTPUT"
 LC_ALL=C render_stage
 ''')
-        frame = re.search(r'\x1b\[H(.*?)\x1b\[J', out, re.S).group(1)
+        frame = '\n'.join(frame_rows(re.search(r'\x1b\[H(.*?)\x1b\[J', out, re.S).group(1)))
         self.assertIn('[Install packages', frame)
         self.assertNotIn('Earlier step', frame)
         self.assertIn('progress    text', frame)
@@ -516,13 +521,11 @@ run_stage second sleep 20
         self.assertNotIn("[passed] first", text)
         self.assertNotIn("Ctrl+Alt", text)
         self.assertIn("\x1b[?25h", text)
-        plain = re.sub(r'\x1b\[[0-9;]*m', '', text)
-        widths = {len(line) for line in re.findall(r'(?:^|\n)(0+)(?=\r?\n|\x1b\[J)', plain)}
+        frames = [frame_rows(frame) for frame in re.findall(r'\x1b\[H(.*?)\x1b\[J', text, flags=re.S)]
+        widths = {len(line) for rows in frames for line in rows if re.fullmatch('0+', line)}
         self.assertIn(89, widths)
         self.assertIn(64, widths)
-        for frame in re.findall(r'\x1b\[H(.*?)\x1b\[J', text, flags=re.S):
-            frame = re.sub(r'\x1b\[[0-9;]*m', '', frame)
-            lines = frame.replace('\r', '').splitlines()
+        for lines in frames:
             limit = 64 if '0' * 64 in lines else 89
             height = 17 if limit == 64 else 23
             self.assertLessEqual(len(lines), height)

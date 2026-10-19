@@ -266,7 +266,7 @@ XKBOPTIONS=""
 BACKSPACE="guess"
 EOF
     if ! setupcon -k --force >/dev/null 2>&1; then
-        note 'Console keymap could not be applied here; it will be configured in the target.' >&3
+        note 'Console keymap could not be applied here; it will be configured in the target.'
     fi
 }
 

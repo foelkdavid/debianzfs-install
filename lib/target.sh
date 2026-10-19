@@ -217,6 +217,7 @@ installer_exit() {
     # still active. Close both writer descriptors before waiting for EOF.
     exec 1>&3 2>&3
     drain_stage
+    ui_restore
     if ((result)); then
         printf '\n' >&3
         failhard "$CURRENT_STAGE (exit $result)" 2>&3
@@ -228,7 +229,6 @@ installer_exit() {
         cleanup_result=$?
     fi
     ((result != 0 || cleanup_result == 0)) || result=$cleanup_result
-    ui_restore
     printf 'Live log retained: %s\n' "$LOG_FILE" >&3
     if ((cleanup_result)); then
         printf 'Cleanup incomplete; inspect the log and remaining target mounts/pool before rebooting.\n' >&3

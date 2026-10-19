@@ -31,7 +31,7 @@ ui_init() {
     [[ -t 1 && ${TERM:-dumb} != dumb && ${TERM:-} != '' ]] && UI_TTY=true
     init_colors
     exec 3>&1
-    UI_STTY=$(stty -g 2>/dev/null || true)
+    UI_STTY=$(stty -g <&3 2>/dev/null || true)
     CURRENT_STAGE='Setup'
     LOG_DIR=${LOG_DIR:-/var/log/debianzfs-install}
     install -d -m 700 "$LOG_DIR"
@@ -73,11 +73,23 @@ sanitize_output() {
 }
 
 screen_header() {
+    restore_terminal_mode
     "$UI_TTY" && printf '\033[H\033[2J' >&3
     header_content >&3
 }
 
 stage_preview() { tail -n 5 "$STAGE_OUTPUT" | sanitize_output; }
+
+paint_frame() {
+    local line row=0 painted=$'\033[H\033[?7l'
+    while IFS= read -r line; do
+        ((row+=1))
+        # Position and erase EVERY row, including blank rows. Newlines depend
+        # on termios flags that package scripts may change while we render.
+        printf -v painted '%s\033[%s;1H\033[2K%s' "$painted" "$row" "$line"
+    done <<< "$1"
+    printf '%s\033[J\033[?7h' "$painted" >&3
+}
 
 render_stage() {
     local frame window line FRAME_WIDTH
@@ -106,7 +118,7 @@ render_stage() {
     )
     # One atomic frame, with no trailing LF. Leave the last row/column unused
     # so auto-wrap and bottom-row scrolling cannot corrupt the layout.
-    printf '\033[H%s\033[J' "$frame" >&3
+    paint_frame "$frame"
 }
 
 stop_renderer() {
@@ -119,6 +131,14 @@ stop_renderer() {
 }
 
 drain_stage() {
+    if [[ -n ${STAGE_READ_FD:-} ]]; then
+        exec {STAGE_READ_FD}<&-
+        unset STAGE_READ_FD
+    fi
+    if [[ -n ${STAGE_FIFO_FD:-} ]]; then
+        exec {STAGE_FIFO_FD}>&-
+        unset STAGE_FIFO_FD
+    fi
     if [[ -n ${LOGGER_PID:-} ]]; then
         wait "$LOGGER_PID" || true
         unset LOGGER_PID
@@ -134,30 +154,43 @@ run_stage() {
     local fifo="$WORK_DIR/output.fifo"
     [[ ! -p $fifo ]] || rm -- "$fifo"
     mkfifo -m 600 "$fifo"
+    # Keep the FIFO open until command launch. Interrupts during the initial
+    # redraw must not leave the logger stuck opening a FIFO with no writer.
+    exec {STAGE_FIFO_FD}<> "$fifo"
+    # Open its read end before forking too: a fast command can finish before
+    # the logger is scheduled. The logger inherits only this read-only end.
+    exec {STAGE_READ_FD}< "$fifo"
     (
         trap - ERR EXIT INT TERM
+        exec 0<&"$STAGE_READ_FD"
+        exec {STAGE_READ_FD}<&-
+        exec {STAGE_FIFO_FD}>&-
         while IFS= read -r line || [[ -n $line ]]; do
             printf '[%s] %s\n' "$(date -u +%FT%TZ)" "$line" >> "$LOG_FILE"
             printf '%s\n' "$line" >> "$STAGE_OUTPUT"
-        done < "$fifo"
+        done
     ) &
     LOGGER_PID=$!
+    exec {STAGE_READ_FD}<&-
+    unset STAGE_READ_FD
     if "$UI_TTY"; then
         rm -f -- "$WORK_DIR/render-stop"
         printf '\033[?25l' >&3
         render_stage
         (
             trap - ERR EXIT INT TERM
+            exec {STAGE_FIFO_FD}>&-
             while [[ ! -e $WORK_DIR/render-stop ]]; do sleep .2; render_stage; done
         ) &
         RENDER_PID=$!
     else
         info "[$CURRENT_STAGE]" >&3
     fi
-    "$@" > "$fifo" 2>&1
+    "$@" < /dev/null > "$fifo" 2>&1
     # Never wrap the command above in `if`, `!`, `||` or a subshell. EXIT
     # performs drain/cleanup on errors; successful variable changes survive.
     drain_stage
+    restore_terminal_mode
     printf '[%s] [passed] %s\n' "$(date -u +%FT%TZ)" "$CURRENT_STAGE" >> "$LOG_FILE"
     if "$UI_TTY"; then
         render_stage
@@ -167,10 +200,14 @@ run_stage() {
     fi
 }
 
+restore_terminal_mode() {
+    if "$UI_TTY"; then
+        [[ -z $UI_STTY ]] || stty "$UI_STTY" <&3 2>/dev/null || true
+    fi
+}
+
 ui_restore() {
     stop_renderer
-    if "$UI_TTY"; then
-        printf '\033[?25h%b\n' "$NC" >&3
-        [[ -z $UI_STTY ]] || stty "$UI_STTY" 2>/dev/null || true
-    fi
+    restore_terminal_mode
+    if "$UI_TTY"; then printf '\033[?7h\033[?25h%b\r\n' "$NC" >&3; fi
 }
