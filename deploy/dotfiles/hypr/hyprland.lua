@@ -9,7 +9,7 @@ if graphicsFile then
 end
 
 -- A fallback also covers outputs that are not yet visible to hyprctl at startup.
-hl.monitor({ output = "", mode = "preferred", position = "auto", scale = deployment.monitor_scale or 1.5 })
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = deployment.monitor_scale or 1.0 })
 
 -- Use the connected monitor order reported by Hyprland instead of assuming
 -- particular connector names. Hyprland reports the primary output first.
@@ -33,7 +33,7 @@ if homeMonitor then
         output = homeMonitor,
         mode = "preferred",
         position = "0x0",
-        scale = deployment.monitor_scale or 1.6,
+        scale = deployment.monitor_scale or 1.0,
     })
 end
 
