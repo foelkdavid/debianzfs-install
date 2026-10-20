@@ -78,11 +78,22 @@ root-readable log file; no separate log VT is allocated. See the
 
 ## Configuration and keys
 
-Packages and services are listed in `vars.sh`. Hardware settings are generated
-in `~/.config/debian-deploy/graphics.lua`. The Hyprland Lua configuration
-retains its German/Bone keyboard layout independently of the console keyboard
-selection. Its monitor settings include the source repository's working-tree
-changes captured when this bundle was merged.
+Packages and services are listed in `vars.sh`. Deployment selects a checked-in
+Hyprland hardware profile by linking `~/.config/debian-deploy/graphics.lua` to
+`~/.local/debianzfs-config/dotfiles/hypr/profiles/PROFILE.lua`. Profiles are
+`intel`, `amd`, `nvidia`, `nouveau`, `vm`, and `vm-software`; the last is selected
+for `GPU_DRIVER=vm VM_SOFTWARE_RENDERING=true`. Rerunning deployment replaces
+the selection, including an older generated file. No Lua contents are generated.
+
+Edit `~/.config/hypr/hyprland.lua` for ordinary desktop settings. Its first
+monitor rule uses every screen's preferred resolution and refresh rate,
+arranges additional screens to the right, and exposes `scale = 1.0` directly.
+Super+1 through Super+0 selects one of ten workspaces on the focused monitor;
+Shift moves a window there. Super+wheel wraps through that monitor's ten
+workspaces. Workspace IDs are grouped by monitor (1–10, 11–20, and so on),
+and allocations stay stable during the session. Super+arrows focuses by
+direction; Super+Shift+arrows swaps windows by direction. German/Bone keyboard
+settings remain independent of the installer's console keyboard choice.
 
 - Super+Return: Alacritty
 - Super+D: launcher

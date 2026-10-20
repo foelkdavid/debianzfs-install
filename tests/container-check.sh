@@ -17,7 +17,12 @@ cat > "$TEST/bin/mock" <<'EOF'
 set -eu
 name=${0##*/}
 case $name in
-    apt-cache) printf '  Candidate: 1.0\n' ;;
+    apt-cache)
+        if [[ ${1:-} == madison ]]; then
+            printf ' %s | 0.55.2 | http://deb.debian.org/debian trixie-backports/main amd64 Packages\n' "$2"
+        else
+            printf '  Candidate: 1.0\n'
+        fi ;;
     apt-get) [[ $EUID == 0 ]] || exit 90 ;;
     dpkg-query) printf '0.55.0\n' ;;
     dpkg)
@@ -41,7 +46,10 @@ for command in apt-get apt-cache curl dpkg dpkg-query systemctl update-initramfs
 done
 # Optional fonts/plugins are skipped. Verify their user-facing outputs and
 # ownership without downloads from the disposable container.
-for profile in intel amd nvidia nouveau vm; do
+for profile in intel amd nvidia nouveau vm vm-software; do
+    gpu=$profile
+    software=false
+    if [[ $profile == vm-software ]]; then gpu=vm; software=true; fi
     destination=/home/fixture/.local/debianzfs-config
     mkdir -p "$destination"
     cp -a "$REPO/debianzfs-config/." "$destination/"
@@ -49,17 +57,20 @@ for profile in intel amd nvidia nouveau vm; do
     # NVIDIA must inspect these target kernels, not the container host kernel.
     mkdir -p /usr/src/linux-headers-6.12.99-fixture
     touch /boot/vmlinuz-6.12.99-fixture
-    PATH="$TEST/bin:$PATH" GPU_DRIVER=$profile VM_GUEST=qemu VM_SOFTWARE_RENDERING=true \
+    PATH="$TEST/bin:$PATH" GPU_DRIVER=$gpu VM_GUEST=qemu VM_SOFTWARE_RENDERING=$software \
         DEBIANZFS_CONFIG_DIR="$destination" DEBIANZFS_SKIP_OPTIONAL_ASSETS=true \
         bash "$REPO/deploy/deploy.sh" --chroot fixture
     [[ $(getent passwd fixture | cut -d: -f7) == /usr/bin/zsh ]]
     [[ $(stat -c %U /home/fixture/.config/debian-deploy/graphics.lua) == fixture ]]
+    [[ $(readlink /home/fixture/.config/debian-deploy/graphics.lua) == "$destination/dotfiles/hypr/profiles/$profile.lua" ]]
+    [[ $(stat -Lc %U /home/fixture/.config/debian-deploy/graphics.lua) == fixture ]]
     [[ $(stat -c %U /home/fixture/.local/state/noctalia/settings.toml) == fixture ]]
     [[ $(readlink /home/fixture/.config/hypr) == "$destination/dotfiles/hypr" ]]
     [[ $(readlink /home/fixture/.zprofile) == "$destination/dotfiles/zsh/zprofile" ]]
     [[ ! -e /home/fixture/Desktop ]]
     [[ $(readlink /home/fixture/.config/systemd/user/sockets.target.wants/pipewire.socket) == /usr/lib/systemd/user/pipewire.socket ]]
-    grep -qx "GPU_DRIVER=$profile" /home/fixture/.local/state/debian-deploy/settings.sh
+    grep -qx "GPU_DRIVER=$gpu" /home/fixture/.local/state/debian-deploy/settings.sh
+    grep -qx "VM_SOFTWARE_RENDERING=$software" /home/fixture/.local/state/debian-deploy/settings.sh
     if [[ -f $TEST/baseline-policy ]]; then
         cmp "$TEST/baseline-policy" /usr/sbin/policy-rc.d
     else

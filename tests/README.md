@@ -5,6 +5,7 @@ Host-safe functional and pseudo-terminal tests (Python 3 and Bash required):
 ```sh
 python3 tests/test_installer.py
 python3 tests/test_noctalia_bundle.py
+python3 tests/test_hyprland.py
 ```
 
 Terminal-emulator regressions additionally require the `pyte` Python package
@@ -34,6 +35,14 @@ renderer shutdown without stale writes, the Void configuration palette,
 `NO_COLOR`, Unicode clipping in a C locale and the five-line preview. They never
 execute installation on the host.
 
+Hyprland tests additionally use Lua 5.4 to execute the config with mocked
+monitor and dispatcher APIs. They cover startup without monitors, one to three
+monitors, per-monitor number/move/wheel bindings, disconnect/reconnect, reload,
+directional focus/swap, and every static hardware profile. User setup runs with
+a temporary HOME to check profile symlinks, migration from generated files,
+profile switching, ownership, and saved settings. These tests do not reload the
+host compositor or establish physical multi-monitor/GPU compatibility.
+
 Syntax/static checks:
 
 ```sh
@@ -51,8 +60,9 @@ read-only at `/repo`; install their dependencies in the disposable container.
 - `bash /repo/tests/container-check.sh`: requires `zsh`, `systemd`, `sudo`,
   `python3`, `xdg-user-dirs`, `procps`. Uses mocked package/download commands
   with real `runuser`, file ownership, Zsh and offline systemctl links. Exercises
-  all five chroot profiles, HOME/XDG identity, permanent dotfile links, saved
-  settings, package-failure policy restoration, incompatible target NVIDIA
+  all five chroot profiles plus the software-rendered VM variant, HOME/XDG
+  identity, permanent dotfile links, saved settings, package-failure policy
+  restoration, incompatible target NVIDIA
   kernels, missing-ESP sync guards, and TTY1/SSH/nested/graphical/noninteractive guards. Run once in a
   fresh container; it creates a fixture account and mock kernel files.
 - `bash /repo/tests/package-plans.sh`: configures the real Debian and Noctalia
@@ -77,6 +87,25 @@ Do not pass host block devices, writable host `/run`, or developer home
 filesystems to the guest. A container may expose `/dev/kvm` for acceleration
 while QEMU sees only `/tmp` disk images and read-only ISO/repository mounts.
 No host installation or physical-GPU validation is implied by these tests.
+
+## Minimal Hyprland configuration (2026-10-20)
+
+- Lua 5.4 syntax checks and ShellCheck passed for the changed configuration,
+  deployment script, and container fixture.
+- All 31 installer tests (including every GPU deployment dry run), five
+  Noctalia tests, and three new Hyprland tests passed on the development host.
+- A disposable Debian Trixie container passed all six profile deployment
+  scenarios with real user ownership and offline service links, failure-policy
+  restoration, NVIDIA target-kernel checks, login guards, and EFI sync guards.
+- All six terminal-emulator regressions passed in the container. The new Lua
+  callback and profile-selection tests also passed as its normal fixture user.
+- Hyprland's configuration verifier passed for the default configuration and
+  all six hardware profiles on Debian's Hyprland 0.55.2 and host Hyprland 0.56.2.
+- Monitor events and workspace actions were tested with mocks. No new VM
+  installation, image rebuild, physical multi-monitor, or physical GPU test was
+  performed for this change. The missing-GPU crash report remains a separate
+  backend/device issue; this change avoids the master-layout cycling path in
+  the other report without claiming to fix all compositor crashes.
 
 ## Initial v1.0.0 implementation (033b629, 2026-10-19)
 
