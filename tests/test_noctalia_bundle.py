@@ -98,7 +98,8 @@ class NoctaliaBundleTests(unittest.TestCase):
             (desktop / "DebianZFS Help.desktop").write_text("old help\n")
             (desktop / "DebianZFS Ticket.desktop").write_text("old ticket\n")
             env = dict(os.environ, HOME=str(home),
-                       XDG_DATA_HOME=str(home / ".local/share"))
+                       XDG_DATA_HOME=str(home / ".local/share"),
+                       XDG_CONFIG_HOME=str(home / ".config"))
             subprocess.run(["bash", str(CONFIG / "scripts/help-shortcuts/deploy.sh")],
                            env=env, check=True, capture_output=True, text=True)
 
@@ -108,6 +109,9 @@ class NoctaliaBundleTests(unittest.TestCase):
                              {"debianzfs-help.desktop", "debianzfs-ticket.desktop"})
             self.assertTrue((applications / "debianzfs-help.desktop").is_file())
             self.assertTrue((applications / "debianzfs-ticket.desktop").is_file())
+            self.assertIn('XDG_DESKTOP_DIR="$HOME/"',
+                          (home / ".config/user-dirs.dirs").read_text())
+            self.assertFalse(desktop.exists())
 
     def test_live_lock_override_changes_only_the_lock_setting(self):
         original = '''[idle.behavior.lock]

@@ -57,7 +57,7 @@ for profile in intel amd nvidia nouveau vm; do
     [[ $(stat -c %U /home/fixture/.local/state/noctalia/settings.toml) == fixture ]]
     [[ $(readlink /home/fixture/.config/hypr) == "$destination/dotfiles/hypr" ]]
     [[ $(readlink /home/fixture/.zprofile) == "$destination/dotfiles/zsh/zprofile" ]]
-    [[ $(stat -c %U "/home/fixture/Desktop/DebianZFS Help.desktop") == fixture ]]
+    [[ ! -e /home/fixture/Desktop ]]
     [[ $(readlink /home/fixture/.config/systemd/user/sockets.target.wants/pipewire.socket) == /usr/lib/systemd/user/pipewire.socket ]]
     grep -qx "GPU_DRIVER=$profile" /home/fixture/.local/state/debian-deploy/settings.sh
     if [[ -f $TEST/baseline-policy ]]; then
