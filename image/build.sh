@@ -11,6 +11,7 @@ BUILD_ROOT=${DEBIANZFS_BUILD_DIR:-/tmp/debianzfs-live-build}
 APT_CACHE="$BUILD_ROOT/apt-cache"
 REPO_ROOT="$BUILD_ROOT/cache-repo"
 CONFIG_ROOT="$BUILD_ROOT/live-config"
+CONFIG_SOURCE_DIR="$BUILD_ROOT/debianzfs-config-source"
 DEBIAN_MIRROR=https://deb.debian.org/debian
 RELEASE=trixie
 
@@ -24,7 +25,19 @@ source /etc/os-release
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y --no-install-recommends ca-certificates curl
+apt-get install -y --no-install-recommends ca-certificates curl git
+
+# Pin each generated image to the newest published config version tag. This
+# makes image builds reproducible while letting them consume a config release
+# newer than the installer submodule's fallback pin.
+config_tag=$(git ls-remote --tags --refs --sort=-version:refname \
+    https://github.com/foelkdavid/debianzfs-config.git 'v*' |
+    sed -n '1s|.*refs/tags/||p')
+[[ -n $config_tag ]] || { echo 'No debianzfs-config version tag is available.' >&2; exit 1; }
+rm -rf -- "$CONFIG_SOURCE_DIR"
+git clone --branch "$config_tag" \
+    https://github.com/foelkdavid/debianzfs-config.git "$CONFIG_SOURCE_DIR"
+printf 'Using debianzfs-config tag %s in this image.\n' "$config_tag"
 
 rm -rf -- "$CONFIG_ROOT"
 install -d "$APT_CACHE/partial" "$REPO_ROOT/pool" "$CONFIG_ROOT/config/package-lists" \
@@ -108,6 +121,11 @@ rsync -a --exclude='/.git/' --exclude='/AGENTS.md' --exclude='/dist/' \
     --exclude='/.image-build-work/' \
     --exclude='/.agents/' --exclude='/.aws/' --exclude='/.codex/' \
     "$ROOT/" "$CONFIG_ROOT/config/includes.chroot/opt/debianzfs-install/"
+rm -rf "$CONFIG_ROOT/config/includes.chroot/opt/debianzfs-install/debianzfs-config"
+git clone --local --no-hardlinks "$CONFIG_SOURCE_DIR" \
+    "$CONFIG_ROOT/config/includes.chroot/opt/debianzfs-install/debianzfs-config"
+git clone --local --no-hardlinks "$CONFIG_SOURCE_DIR" \
+    "$CONFIG_ROOT/config/includes.chroot/opt/debianzfs-config"
 install -d "$CONFIG_ROOT/config/includes.chroot/opt/debianzfs-install/cache"
 cp -a "$REPO_ROOT/." "$CONFIG_ROOT/config/includes.chroot/opt/debianzfs-install/cache/"
 cat > "$CONFIG_ROOT/config/hooks/normal/0100-debianzfs-live.hook.chroot" <<'HOOK'
@@ -115,11 +133,20 @@ cat > "$CONFIG_ROOT/config/hooks/normal/0100-debianzfs-live.hook.chroot" <<'HOOK
 set -Eeuo pipefail
 set +x
 getent group sudo >/dev/null || groupadd sudo
-useradd --create-home --groups sudo --shell /bin/bash liveuser
+id liveuser >/dev/null 2>&1 || useradd --create-home --groups sudo --shell /bin/bash liveuser
 systemctl --root=/ --no-reload enable NetworkManager.service
+systemctl --root=/ --no-reload disable \
+    systemd-networkd.service systemd-networkd.socket \
+    systemd-networkd-wait-online.service systemd-resolved.service networking.service
+systemctl --root=/ --no-reload mask \
+    systemd-networkd.service systemd-networkd.socket systemd-resolved.service \
+    networking.service
+install -d -m 755 /etc/tmpfiles.d
+printf '%s\n' 'L+ /etc/resolv.conf - - - - /run/NetworkManager/resolv.conf' \
+    > /etc/tmpfiles.d/debianzfs-network.conf
 install -d -o liveuser -g liveuser -m 755 /opt/media/wall
 install -o liveuser -g liveuser -m 644 \
-    /opt/debianzfs-install/deploy/wallpapers/debianzfs_1.png \
+    /opt/debianzfs-install/debianzfs-config/wallpapers/debianzfs_1.png \
     /opt/media/wall/debianzfs_1.png
 install -d -m 755 /etc/sudoers.d
 printf 'liveuser ALL=(root) NOPASSWD: /opt/debianzfs-install/install.sh\n' \
@@ -136,8 +163,21 @@ cat > /etc/systemd/system/getty@tty1.service.d/autologin.conf <<'EOF'
 ExecStart=
 ExecStart=-/sbin/agetty --autologin liveuser --noclear %I $TERM
 EOF
+install -d -o liveuser -g liveuser -m 755 /home/liveuser/.local
+git clone --local --no-hardlinks /opt/debianzfs-config \
+    /home/liveuser/.local/debianzfs-config
+git -C /home/liveuser/.local/debianzfs-config remote set-url origin \
+    https://github.com/foelkdavid/debianzfs-config.git
+git -C /home/liveuser/.local/debianzfs-config checkout -B main HEAD
+git -C /home/liveuser/.local/debianzfs-config config branch.main.remote origin
+git -C /home/liveuser/.local/debianzfs-config config branch.main.merge refs/heads/main
+chown -R liveuser:liveuser /home/liveuser/.local/debianzfs-config
 GPU_DRIVER=intel VM_GUEST=none VM_SOFTWARE_RENDERING=false \
+    DEBIANZFS_CONFIG_DIR=/home/liveuser/.local/debianzfs-config \
     bash /opt/debianzfs-install/deploy/deploy.sh --chroot liveuser
+python3 /opt/debianzfs-install/deploy/scripts/disable-live-lock.py \
+    /home/liveuser/.local/state/noctalia/settings.toml
+chown liveuser:liveuser /home/liveuser/.local/state/noctalia/settings.toml
 HOOK
 chmod 755 "$CONFIG_ROOT/config/hooks/normal/0100-debianzfs-live.hook.chroot"
 

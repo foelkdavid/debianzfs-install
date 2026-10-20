@@ -1,0 +1,3 @@
+[submodule "debianzfs-config"]
+	path = debianzfs-config
+	url = https://github.com/foelkdavid/debianzfs-config.git

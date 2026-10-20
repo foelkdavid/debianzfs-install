@@ -23,10 +23,29 @@ live_environment_check() {
 
 bundled_files_check() {
     local file
-    for file in lib/{ui,config,target}.sh services/efisync/{efisync.sh,efisync.service} \
-        services/zfs-autosnap/{zfs-autosnap.sh,zfs-autosnap-status.sh,zfs-autosnap.service,jobs.conf} \
-        deploy/{deploy.sh,vars.sh,scripts/debian-sources.py,scripts/user-setup.sh,noctalia/settings.toml,wallpapers/debianzfs_1.png,desktop/debianzfs-help.desktop} \
-        deploy/dotfiles/{hypr/hyprland.lua,alacritty/alacritty.toml,gtk-3.0/settings.ini,nvim/init.lua,nvim/lua/options.lua,zsh/zshrc,zsh/aliases,zsh/getplugins.sh,fonts/getfonts.sh}; do
+    for file in lib/ui.sh lib/config.sh lib/target.sh \
+        services/efisync/efisync.sh services/efisync/efisync.service \
+        services/zfs-autosnap/zfs-autosnap.sh services/zfs-autosnap/zfs-autosnap-status.sh \
+        services/zfs-autosnap/zfs-autosnap.service services/zfs-autosnap/jobs.conf \
+        deploy/deploy.sh deploy/vars.sh deploy/scripts/debian-sources.py \
+        deploy/scripts/user-setup.sh deploy/scripts/disable-live-lock.py \
+        debianzfs-config/deploy.sh debianzfs-config/noctalia/settings.toml \
+        debianzfs-config/scripts/dotfiles/deploy.sh \
+        debianzfs-config/scripts/noctalia/deploy.sh \
+        debianzfs-config/scripts/help-shortcuts/deploy.sh \
+        debianzfs-config/wallpapers/debianzfs_1.png \
+        debianzfs-config/dotfiles/hypr/hyprland.lua \
+        debianzfs-config/dotfiles/alacritty/alacritty.toml \
+        debianzfs-config/dotfiles/gtk-3.0/settings.ini \
+        debianzfs-config/dotfiles/nvim/init.lua \
+        debianzfs-config/dotfiles/nvim/lua/options.lua \
+        debianzfs-config/dotfiles/zsh/zshrc debianzfs-config/dotfiles/zsh/zprofile \
+        debianzfs-config/dotfiles/zsh/aliases \
+        debianzfs-config/scripts/fonts/deploy.sh \
+        debianzfs-config/scripts/help-shortcuts/desktop-files/debianzfs-help.desktop \
+        debianzfs-config/scripts/help-shortcuts/desktop-files/debianzfs-ticket.desktop \
+        debianzfs-config/scripts/help-shortcuts/pngs/debianzfs-help.png \
+        debianzfs-config/scripts/help-shortcuts/pngs/debianzfs-ticket.png; do
         [[ -s $REPO_DIR/$file ]] || { failhard "Missing bundled file: $file"; return 1; }
     done
 }
@@ -215,7 +234,7 @@ print_preconf_header() {
         config_row 'Username' "${DEBIAN_SUDOUSER:-}"
         config_row 'Timezone' "${DEBIAN_TIMEZONE:-}"
         config_row 'Console keymap' "${DEBIAN_KEYMAP:-}"
-        config_row 'Networking' "$([[ ${DEBIAN_DESKTOP:-false} == true ]] && echo NetworkManager || echo systemd-networkd); IPv4 DHCP: ${DEBIAN_ENABLE_DHCP:-}"
+        config_row 'Networking' "NetworkManager; IPv4 DHCP: ${DEBIAN_ENABLE_DHCP:-}"
         config_row 'Desktop' "${DEBIAN_DESKTOP:-}"
         if [[ ${DEBIAN_DESKTOP:-false} == true ]]; then config_row 'GPU profile' "${GPU_DRIVER:-}"; fi
         if [[ ${GPU_DRIVER:-} == vm ]]; then

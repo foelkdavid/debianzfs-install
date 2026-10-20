@@ -1,46 +1,32 @@
 # Bundled Debian desktop deployment
 
-Sets up Debian 13 Trixie with Hyprland, Noctalia, Alacritty, Thunar, Firefox ESR,
-Zsh, audio, networking, Bluetooth, fonts, Zsh plugins and linked dotfiles.
-Hyprland comes from Trixie backports; Noctalia uses its official APT repository.
-The parent ZFS installer offers this deployment by default and copies this
-bundled directory into the configured account's permanent `~/.local/deploy`.
-It does not clone a fresh deployment repository.
+Installs Debian 13 desktop packages and configures their services inside the
+new target. User dotfiles, Noctalia settings, wallpaper, help/ticket shortcuts
+and refreshable user scripts live in the pinned
+[`debianzfs-config`](../debianzfs-config) repository. The installer places that
+checkout at `~/.local/debianzfs-config`; temporary package deployment scripts
+are removed before reboot.
 
 Noctalia uses the bundled plugin-free v5 settings and Gruvbox theme. The
 Debian wallpaper is installed at `/opt/media/wall/debianzfs_1.png`, which is
 also the configured default. The installer assigns `/opt/media/wall` to the
 configured sudo user. Existing `~/.local/state/noctalia/settings.toml` files
-are preserved during standalone deployment reruns.
+are preserved during configuration refreshes.
 NetworkManager starts in the live image and installed desktop. The live image
 uses wired DHCP by default; the installer carries the selected DHCP setting
 into the installed system. Wi-Fi can be selected and configured from Noctalia's
-network panel. A **DebianZFS Help** launcher on the desktop and in the app
-launcher opens `https://docs.debian.foelk.com` in Firefox.
+network panel. **DebianZFS Help** opens `https://docs.debian.foelk.com` in
+Firefox, and **DebianZFS Ticket** opens the pre-labeled GitHub issue form.
+Both launchers are installed on the desktop and in the app launcher with their
+bundled icons.
 
-## Standalone usage
+## Refreshing user configuration
 
-On booted Debian Trixie with a sudo-capable normal user and internet access:
-
-1. Copy this `deploy/` directory to `~/.local/deploy`, or keep it at another
-   permanent location. Dotfiles link into it, so do not remove or move it later.
-2. Choose settings in `vars.sh` or environment variables.
-3. Run `./deploy.sh --dry-run` to inspect packages and profile choices.
-4. Run `./deploy.sh` as your normal user, without `sudo` in front.
-5. Reboot and log in normally on **TTY1**. Hyprland starts after login, with no
-   automatic login. Exiting Hyprland returns to the shell. SSH, nested shells
-   and existing graphical sessions do not launch another compositor.
-
-Settings persist as data in `~/.local/state/debian-deploy/settings.sh` for
-reruns. Explicit environment variables override saved settings. For example:
-
-```sh
-GPU_DRIVER=vm VM_GUEST=qemu VM_SOFTWARE_RENDERING=true ./deploy.sh --dry-run
-```
-
-Existing configs are backed up under `~/.local/state/debian-deploy/backups/`.
-To refresh the deployment, copy the newer bundled files into the same permanent
-location and rerun the script. Retain any custom changes when refreshing.
+After `git pull`, run `~/.local/debianzfs-config/deploy.sh` as the desktop user
+to refresh dotfile links and shortcut entries. Existing symlinks are replaced;
+regular files are backed up under `~/.local/state/debianzfs-config/backups/`.
+Set `DEBIANZFS_SKIP_OPTIONAL_ASSETS=true` to refresh offline without downloading
+fonts or cloning Zsh plugins.
 
 ## Graphics and VM options
 
@@ -63,11 +49,13 @@ location and rerun the script. Retain any custom changes when refreshing.
 ## Explicit chroot mode
 
 The parent installer creates the account, provides target DNS and a private
-`/run`, copies this bundle and invokes it as target root:
+`/run`, stages this package deployment bundle temporarily in `/opt`, and invokes
+it as target root. It clones the pinned config checkout into the selected
+account's home:
 
 ```sh
 GPU_DRIVER=vm VM_GUEST=qemu VM_SOFTWARE_RENDERING=false \
-  bash /home/USER/.local/deploy/deploy.sh --chroot USER
+  bash /opt/debianzfs-deploy/deploy.sh --chroot USER
 ```
 
 `--chroot USER` is root-only and requires an existing normal account, Debian
@@ -91,7 +79,7 @@ root-readable log file; no separate log VT is allocated. See the
 ## Configuration and keys
 
 Packages and services are listed in `vars.sh`. Hardware settings are generated
-in `~/.config/debian-deploy/graphics.lua`. The bundled Hyprland Lua configuration
+in `~/.config/debian-deploy/graphics.lua`. The Hyprland Lua configuration
 retains its German/Bone keyboard layout independently of the console keyboard
 selection. Its monitor settings include the source repository's working-tree
 changes captured when this bundle was merged.

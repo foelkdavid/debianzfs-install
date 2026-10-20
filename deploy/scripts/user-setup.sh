@@ -6,24 +6,9 @@ REPO_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 # shellcheck source=deploy/vars.sh
 source "$REPO_DIR/vars.sh"
 CONFIG_DIR=${XDG_CONFIG_HOME:-$HOME/.config}
-DATA_DIR=${XDG_DATA_HOME:-$HOME/.local/share}
 STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/debian-deploy
-NOCTALIA_STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/noctalia
 WORK_DIR=$(mktemp -d)
 trap 'rm -rf -- "$WORK_DIR"' EXIT
-BACKUP_DIR="$STATE_DIR/backups/$(date +%Y%m%d-%H%M%S)-$$"
-link_config() {
-    local source_path=$1 destination=$2
-    mkdir -p -- "$(dirname -- "$destination")"
-    if [[ -L "$destination" && "$(readlink -f -- "$destination" || true)" == "$source_path" ]]; then
-        return
-    fi
-    if [[ -e "$destination" || -L "$destination" ]]; then
-        mkdir -p -- "$BACKUP_DIR"
-        mv -- "$destination" "$BACKUP_DIR/$(basename -- "$destination")"
-    fi
-    ln -s -- "$source_path" "$destination"
-}
 
 printf 'Configuring graphics...\n'
 mkdir -p -- "$CONFIG_DIR/debian-deploy"
@@ -45,59 +30,13 @@ else
 fi
 install -m 644 "$WORK_DIR/graphics.lua" "$CONFIG_DIR/debian-deploy/graphics.lua"
 
-printf 'Linking dotfiles and installing user resources...\n'
-for config in alacritty zsh gtk-3.0 nvim hypr; do
-    link_config "$REPO_DIR/dotfiles/$config" "$CONFIG_DIR/$config"
-done
-link_config "$REPO_DIR/dotfiles/zsh/zshrc" "$HOME/.zshrc"
-
-bash "$REPO_DIR/dotfiles/zsh/getplugins.sh"
-bash "$REPO_DIR/dotfiles/fonts/getfonts.sh"
-xdg-user-dirs-update
-
-# Seed the graphical authentication agent and the bundled Noctalia settings.
-mkdir -p -- "$CONFIG_DIR/noctalia"
-if [[ ! -e "$CONFIG_DIR/noctalia/config.toml" ]]; then
-    printf '%s\n' '[shell]' 'polkit_agent = true' > "$CONFIG_DIR/noctalia/config.toml"
-fi
-install -d -m 755 "$NOCTALIA_STATE_DIR"
-if [[ ! -e "$NOCTALIA_STATE_DIR/settings.toml" ]]; then
-    install -m 644 "$REPO_DIR/noctalia/settings.toml" "$NOCTALIA_STATE_DIR/settings.toml"
-fi
-DESKTOP_DIR=$(xdg-user-dir DESKTOP 2>/dev/null || true)
-[[ -n $DESKTOP_DIR ]] || DESKTOP_DIR="$HOME/Desktop"
-install -d -m 755 "$DESKTOP_DIR" "$DATA_DIR/applications"
-install -m 755 "$REPO_DIR/desktop/debianzfs-help.desktop" \
-    "$DESKTOP_DIR/DebianZFS Help.desktop"
-install -m 644 "$REPO_DIR/desktop/debianzfs-help.desktop" \
-    "$DATA_DIR/applications/debianzfs-help.desktop"
-
-# Hyprland's portal handles screen sharing; GTK supplies the file chooser.
-mkdir -p -- "$CONFIG_DIR/xdg-desktop-portal"
-cat > "$WORK_DIR/hyprland-portals.conf" <<'EOF'
-[preferred]
-default=hyprland;gtk
-org.freedesktop.impl.portal.FileChooser=gtk
-EOF
-PORTAL_CONFIG="$CONFIG_DIR/xdg-desktop-portal/hyprland-portals.conf"
-if ! cmp -s "$WORK_DIR/hyprland-portals.conf" "$PORTAL_CONFIG"; then
-    if [[ -e "$PORTAL_CONFIG" || -L "$PORTAL_CONFIG" ]]; then
-        mkdir -p -- "$BACKUP_DIR"
-        mv -- "$PORTAL_CONFIG" "$BACKUP_DIR/hyprland-portals.conf"
-    fi
-    install -m 644 "$WORK_DIR/hyprland-portals.conf" "$PORTAL_CONFIG"
-fi
-
-
-# Enable user units offline by creating links in this user's config directory.
-# systemctl --user --root can choose vendor-wide links; explicit per-user links
-# avoid contacting a user manager and keep every file owned by this account.
-for unit in pipewire.socket pipewire-pulse.socket; do
-    mkdir -p "$CONFIG_DIR/systemd/user/sockets.target.wants"
-    ln -sfn "/usr/lib/systemd/user/$unit" "$CONFIG_DIR/systemd/user/sockets.target.wants/$unit"
-done
-mkdir -p "$CONFIG_DIR/systemd/user/pipewire.service.wants"
-ln -sfn /usr/lib/systemd/user/wireplumber.service "$CONFIG_DIR/systemd/user/pipewire.service.wants/wireplumber.service"
+printf 'Installing user configuration from debianzfs-config...\n'
+CONFIG_REPO_DIR=${DEBIANZFS_CONFIG_DIR:-$HOME/.local/debianzfs-config}
+[[ -x $CONFIG_REPO_DIR/deploy.sh ]] || {
+    printf 'Missing config repository or deploy script: %s/deploy.sh\n' "$CONFIG_REPO_DIR" >&2
+    exit 1
+}
+"$CONFIG_REPO_DIR/deploy.sh"
 # Persist settings while allowing explicit environment overrides on reruns.
 mkdir -p "$STATE_DIR"
 cat > "$STATE_DIR/settings.sh" <<EOF

@@ -39,32 +39,25 @@ chmod 755 "$TEST/bin/mock"
 for command in apt-get apt-cache curl dpkg dpkg-query systemctl update-initramfs Hyprland start-hyprland noctalia Thunar firefox-esr alacritty nvim grim slurp wl-copy gio; do
     ln -s mock "$TEST/bin/$command"
 done
-# The actual user helper uses an intentionally fixed environment PATH.
-# Replace only external-download helpers in the fixture copy.
+# Optional fonts/plugins are skipped. Verify their user-facing outputs and
+# ownership without downloads from the disposable container.
 for profile in intel amd nvidia nouveau vm; do
-    destination=/home/fixture/.local/deploy
+    destination=/home/fixture/.local/debianzfs-config
     mkdir -p "$destination"
-    cp -a "$REPO/deploy/." "$destination/"
-    for helper in fonts/getfonts.sh zsh/getplugins.sh; do
-        cat > "$destination/dotfiles/$helper" <<'EOF'
-#!/bin/bash
-set -eu
-[[ $(id -un) == fixture && $HOME == /home/fixture && $USER == fixture && $LOGNAME == fixture ]]
-[[ $XDG_CONFIG_HOME == $HOME/.config && $XDG_STATE_HOME == $HOME/.local/state && $XDG_DATA_HOME == $HOME/.local/share && $XDG_CACHE_HOME == $HOME/.cache ]]
-mkdir -p "$XDG_DATA_HOME/fixture"
-printf '%s\n' "$(id -u)" > "$XDG_DATA_HOME/fixture/owner"
-EOF
-    done
+    cp -a "$REPO/debianzfs-config/." "$destination/"
     chown -R fixture:fixture /home/fixture
     # NVIDIA must inspect these target kernels, not the container host kernel.
     mkdir -p /usr/src/linux-headers-6.12.99-fixture
     touch /boot/vmlinuz-6.12.99-fixture
     PATH="$TEST/bin:$PATH" GPU_DRIVER=$profile VM_GUEST=qemu VM_SOFTWARE_RENDERING=true \
-        bash "$destination/deploy.sh" --chroot fixture
+        DEBIANZFS_CONFIG_DIR="$destination" DEBIANZFS_SKIP_OPTIONAL_ASSETS=true \
+        bash "$REPO/deploy/deploy.sh" --chroot fixture
     [[ $(getent passwd fixture | cut -d: -f7) == /usr/bin/zsh ]]
     [[ $(stat -c %U /home/fixture/.config/debian-deploy/graphics.lua) == fixture ]]
-    [[ $(stat -c %U /home/fixture/.local/share/fixture/owner) == fixture ]]
+    [[ $(stat -c %U /home/fixture/.local/state/noctalia/settings.toml) == fixture ]]
     [[ $(readlink /home/fixture/.config/hypr) == "$destination/dotfiles/hypr" ]]
+    [[ $(readlink /home/fixture/.zprofile) == "$destination/dotfiles/zsh/zprofile" ]]
+    [[ $(stat -c %U "/home/fixture/Desktop/DebianZFS Help.desktop") == fixture ]]
     [[ $(readlink /home/fixture/.config/systemd/user/sockets.target.wants/pipewire.socket) == /usr/lib/systemd/user/pipewire.socket ]]
     grep -qx "GPU_DRIVER=$profile" /home/fixture/.local/state/debian-deploy/settings.sh
     if [[ -f $TEST/baseline-policy ]]; then
@@ -84,7 +77,9 @@ cat > "$TEST/bin/apt-get" <<'EOF'
 exit 17
 EOF
 chmod 755 "$TEST/bin/apt-get"
-if PATH="$TEST/bin:$PATH" GPU_DRIVER=vm VM_GUEST=none bash "$destination/deploy.sh" --chroot fixture; then
+if PATH="$TEST/bin:$PATH" GPU_DRIVER=vm VM_GUEST=none \
+    DEBIANZFS_CONFIG_DIR="$destination" DEBIANZFS_SKIP_OPTIONAL_ASSETS=true \
+    bash "$REPO/deploy/deploy.sh" --chroot fixture; then
     echo 'Expected package failure' >&2; exit 1
 else
     [[ $? == 17 ]]
@@ -92,7 +87,7 @@ fi
 cmp "$TEST/original" /usr/sbin/policy-rc.d
 [[ $(stat -c %a /usr/sbin/policy-rc.d) == 711 ]]
 touch /boot/vmlinuz-6.17.1-fixture
-if PATH="$TEST/bin:$PATH" GPU_DRIVER=nvidia bash "$destination/deploy.sh" --chroot fixture > "$TEST/nvidia.log" 2>&1; then
+if PATH="$TEST/bin:$PATH" GPU_DRIVER=nvidia bash "$REPO/deploy/deploy.sh" --chroot fixture > "$TEST/nvidia.log" 2>&1; then
     echo 'Expected incompatible target kernel rejection' >&2; exit 1
 fi
 grep -q 'target contains 6.17.1-fixture' "$TEST/nvidia.log"

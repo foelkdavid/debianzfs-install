@@ -271,16 +271,15 @@ apt_install_target() {{ printf '%s\\n' "$*" >> "$TARGET/commands"; }}
 configure_networking
 ''')
                 commands = (directory / "commands").read_text()
-                self.assertNotIn("systemctl enable", commands)
-                if desktop == "true":
-                    self.assertIn("mask systemd-networkd.service", commands)
-                    config = directory / "etc/NetworkManager/system-connections/wired.nmconnection"
-                    self.assertEqual(config.exists(), dhcp == "true")
-                    if config.exists(): self.assertEqual(config.stat().st_mode & 0o777, 0o600)
-                    self.assertEqual(os.readlink(directory / "etc/resolv.conf"), "/run/NetworkManager/resolv.conf")
-                else:
-                    self.assertIn("mask NetworkManager.service networking.service", commands)
-                    self.assertEqual((directory / "etc/systemd/network/20-wired-ipv4-dhcp.network").exists(), dhcp == "true")
+                self.assertIn("network-manager wpasupplicant", commands)
+                self.assertIn("mask systemd-networkd.service", commands)
+                self.assertIn("systemd-resolved.service networking.service", commands)
+                self.assertIn("systemd-resolved.service networking.service", commands)
+                self.assertIn("enable NetworkManager.service", commands)
+                config = directory / "etc/NetworkManager/system-connections/wired.nmconnection"
+                self.assertEqual(config.exists(), dhcp == "true")
+                if config.exists(): self.assertEqual(config.stat().st_mode & 0o777, 0o600)
+                self.assertEqual(os.readlink(directory / "etc/resolv.conf"), "/run/NetworkManager/resolv.conf")
 
     def test_iso_cache_mounting_and_standard_media_fallback(self):
         target = self.root / "target"

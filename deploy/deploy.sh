@@ -189,7 +189,7 @@ as_root apt-get update
 INSTALL_PACKAGES=()
 for package in "${PACKAGES[@]}" "${GPU_PACKAGES[@]}" "${NOCTALIA_PACKAGES[@]}"; do
     case "$package" in
-        libgl1-mesa-dri|libegl-mesa0|mesa-*|nvidia-*|libnvidia-*|pipewire-*|wireplumber|libspa-0.2-bluetooth)
+        libgl1-mesa-dri|libegl-mesa0|mesa-*|nvidia-*|libnvidia-*|pipewire-*|wireplumber|libspa-0.2-bluetooth|curl|libcurl4t64)
             INSTALL_PACKAGES+=("$package")
             continue ;;
     esac
@@ -234,7 +234,9 @@ user_environment=(env -i HOME="$TARGET_HOME" USER="$LOGIN_USER" LOGNAME="$LOGIN_
     PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 SHELL="$USERSHELL"
     XDG_CONFIG_HOME="$CONFIG_DIR" XDG_DATA_HOME="$DATA_DIR"
     XDG_STATE_HOME="${STATE_DIR%/debian-deploy}" XDG_CACHE_HOME="$CACHE_DIR"
-    GPU_DRIVER="$GPU_DRIVER" VM_GUEST="$VM_GUEST" VM_SOFTWARE_RENDERING="$VM_SOFTWARE_RENDERING" USERSHELL="$USERSHELL")
+    GPU_DRIVER="$GPU_DRIVER" VM_GUEST="$VM_GUEST" VM_SOFTWARE_RENDERING="$VM_SOFTWARE_RENDERING" USERSHELL="$USERSHELL"
+    DEBIANZFS_CONFIG_DIR="${DEBIANZFS_CONFIG_DIR:-$TARGET_HOME/.local/debianzfs-config}"
+    DEBIANZFS_SKIP_OPTIONAL_ASSETS="${DEBIANZFS_SKIP_OPTIONAL_ASSETS:-false}")
 if [[ $CHROOT_MODE == true ]]; then
     runuser -u "$LOGIN_USER" -- "${user_environment[@]}" bash "$REPO_DIR/scripts/user-setup.sh"
 else

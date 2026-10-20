@@ -109,16 +109,21 @@ remove_bundled_apt_cache_config() {
 }
 
 configure_networking() {
-    if [[ $DEBIAN_DESKTOP == true ]]; then
-        chroot_run systemctl --root=/ --no-reload disable systemd-networkd.service systemd-networkd.socket systemd-networkd-wait-online.service
-        chroot_run systemctl --root=/ --no-reload mask systemd-networkd.service systemd-networkd.socket
-        mkdir -p "$TARGET/etc/NetworkManager/system-connections" "$TARGET/etc/NetworkManager/conf.d"
-        cat > "$TARGET/etc/NetworkManager/conf.d/20-installer.conf" <<'EOF'
+    apt_install_target network-manager wpasupplicant
+    chroot_run systemctl --root=/ --no-reload disable \
+        systemd-networkd.service systemd-networkd.socket \
+        systemd-networkd-wait-online.service systemd-resolved.service networking.service
+    chroot_run systemctl --root=/ --no-reload mask \
+        systemd-networkd.service systemd-networkd.socket systemd-resolved.service \
+        networking.service
+    mkdir -p "$TARGET/etc/NetworkManager/system-connections" "$TARGET/etc/NetworkManager/conf.d"
+    cat > "$TARGET/etc/NetworkManager/conf.d/20-installer.conf" <<'EOF'
 [main]
 no-auto-default=*
+dns=default
 EOF
-        if [[ $DEBIAN_ENABLE_DHCP == true ]]; then
-            cat > "$TARGET/etc/NetworkManager/system-connections/wired.nmconnection" <<'EOF'
+    if [[ $DEBIAN_ENABLE_DHCP == true ]]; then
+        cat > "$TARGET/etc/NetworkManager/system-connections/wired.nmconnection" <<'EOF'
 [connection]
 id=Wired DHCP
 type=ethernet
@@ -129,48 +134,42 @@ method=auto
 [ipv6]
 method=disabled
 EOF
-            chmod 600 "$TARGET/etc/NetworkManager/system-connections/wired.nmconnection"
-        fi
-        chroot_run systemctl --root=/ --no-reload enable NetworkManager.service
-        rm -f -- "$TARGET/etc/resolv.conf"
-        ln -s /run/NetworkManager/resolv.conf "$TARGET/etc/resolv.conf"
-    else
-        apt_install_target systemd-resolved
-        chroot_run systemctl --root=/ --no-reload mask NetworkManager.service networking.service
-        mkdir -p "$TARGET/etc/systemd/network"
-        if [[ $DEBIAN_ENABLE_DHCP == true ]]; then
-            cat > "$TARGET/etc/systemd/network/20-wired-ipv4-dhcp.network" <<'EOF'
-[Match]
-Type=ether
-[Network]
-DHCP=ipv4
-IPv6AcceptRA=no
-LinkLocalAddressing=no
-[DHCPv4]
-UseDNS=yes
-EOF
-        fi
-        chroot_run systemctl --root=/ --no-reload enable systemd-networkd.service systemd-resolved.service
-        rm -f -- "$TARGET/etc/resolv.conf"
-        ln -s /run/systemd/resolve/resolv.conf "$TARGET/etc/resolv.conf"
+        chmod 600 "$TARGET/etc/NetworkManager/system-connections/wired.nmconnection"
     fi
+    chroot_run systemctl --root=/ --no-reload enable NetworkManager.service
+    rm -f -- "$TARGET/etc/resolv.conf"
+    ln -s /run/NetworkManager/resolv.conf "$TARGET/etc/resolv.conf"
 }
 
 deploy_desktop() {
     [[ $DEBIAN_DESKTOP == true ]] || return 0
     local home="/home/$DEBIAN_SUDOUSER"
     install -d -m 755 "$TARGET/opt/media/wall"
-    install -m 644 "$REPO_DIR/deploy/wallpapers/debianzfs_1.png" \
+    install -m 644 "$REPO_DIR/debianzfs-config/wallpapers/debianzfs_1.png" \
         "$TARGET/opt/media/wall/debianzfs_1.png"
     chroot_run chown -R "$DEBIAN_SUDOUSER:$DEBIAN_SUDOUSER" /opt/media/wall
-    install -d -m 755 "$TARGET$home/.local/deploy"
-    cp -a "$REPO_DIR/deploy/." "$TARGET$home/.local/deploy/"
-    chroot_run chown -R "$DEBIAN_SUDOUSER:$DEBIAN_SUDOUSER" "$home/.local"
+    install -d -m 755 "$TARGET$home/.local"
+    local config_source=${DEBIANZFS_CONFIG_SOURCE:-$REPO_DIR/debianzfs-config}
+    if [[ -d /opt/debianzfs-config/.git ]]; then
+        config_source=/opt/debianzfs-config
+    fi
+    git clone --local --no-hardlinks "$config_source" \
+        "$TARGET$home/.local/debianzfs-config"
+    git -C "$TARGET$home/.local/debianzfs-config" remote set-url origin \
+        https://github.com/foelkdavid/debianzfs-config.git
+    git -C "$TARGET$home/.local/debianzfs-config" checkout -B main HEAD
+    git -C "$TARGET$home/.local/debianzfs-config" config branch.main.remote origin
+    git -C "$TARGET$home/.local/debianzfs-config" config branch.main.merge refs/heads/main
+    chroot_run chown -R "$DEBIAN_SUDOUSER:$DEBIAN_SUDOUSER" "$home/.local/debianzfs-config"
+    install -d -m 755 "$TARGET/opt/debianzfs-deploy"
+    cp -a "$REPO_DIR/deploy/." "$TARGET/opt/debianzfs-deploy/"
     # VM_GUEST is resolved by the live setup, never by chroot's systemd view.
     chroot_run env GPU_DRIVER="$GPU_DRIVER" VM_GUEST="$VM_GUEST" \
         VM_SOFTWARE_RENDERING="$VM_SOFTWARE_RENDERING" \
+        DEBIANZFS_CONFIG_DIR="$home/.local/debianzfs-config" \
         DEBIANZFS_APT_CACHE="$( [[ ${IMAGE_CACHE_MOUNTED:-false} == true ]] && printf /mnt/debianzfs-cache )" \
-        bash "$home/.local/deploy/deploy.sh" --chroot "$DEBIAN_SUDOUSER"
+        bash /opt/debianzfs-deploy/deploy.sh --chroot "$DEBIAN_SUDOUSER"
+    rm -rf -- "$TARGET/opt/debianzfs-deploy"
 }
 
 run_installation() {
@@ -213,6 +212,9 @@ cleanup_target() {
     # in EXIT and must preserve failures without abandoning safe cleanup.
     local failed=0 path
     restore_target_policy || failed=1
+    if [[ -d $TARGET/opt/debianzfs-deploy ]]; then
+        rm -rf -- "$TARGET/opt/debianzfs-deploy" || failed=1
+    fi
     remove_bundled_apt_cache_config || failed=1
     unset USER_PASSWORD ZFS_PASSPHRASE
     if [[ -n ${WORK_DIR:-} && -f $WORK_DIR/zroot.key ]]; then

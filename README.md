@@ -49,7 +49,7 @@ Run it from an official Debian 13 **live** image, with internet access:
 ```sh
 sudo apt-get update
 sudo apt-get install git ca-certificates curl
-git clone https://github.com/foelkdavid/debianzfs-install
+git clone --recurse-submodules https://github.com/foelkdavid/debianzfs-install
 cd debianzfs-install
 sudo ./install.sh
 ```
@@ -82,14 +82,20 @@ sources.
 
 Choose **Run desktop deployment too? (y/n)** (default yes):
 
-- **No:** clean Debian ZFS, Bash login, systemd-networkd and systemd-resolved.
+- **No:** clean Debian ZFS and Bash login.
   No desktop files, packages or login customization are installed.
-- **Yes:** the bundled [`deploy/`](deploy/README.md) is copied permanently to
-  `~/.local/deploy` and run inside the target chroot before final initramfs and
-  mirrored ESP synchronization. Choose `intel`, `amd`, `nvidia`, `nouveau` or
+- **Yes:** the installer uses its bundled [`debianzfs-config`](debianzfs-config)
+  snapshot and installs it at `~/.local/debianzfs-config`. Live images bundle
+  the newest published config version tag at build time. Desktop deployment
+  runs before final initramfs and mirrored ESP synchronization. Choose
+  `intel`, `amd`, `nvidia`, `nouveau` or
   `vm`; VM mode also asks about guest tools and software rendering. Desktop
-  systems use NetworkManager. Turning DHCP off leaves Ethernet configuration
-  to you; NetworkManager will not create an automatic default connection.
+  installations use NetworkManager and `wpa_supplicant` for Ethernet and Wi-Fi.
+  Turning DHCP off leaves Ethernet configuration to you; NetworkManager will
+  not create an automatic default connection.
+
+Clean installations use NetworkManager and `wpa_supplicant` for wired DHCP and
+Wi-Fi configuration as well.
 
 Log in normally on **TTY1** using your configured account. Desktop installations
 start Hyprland after that login, with no automatic login. SSH, nested shells
@@ -97,9 +103,13 @@ and existing graphical sessions do not start another compositor. Exiting
 Hyprland returns to the shell. The bundled German/Bone Hyprland keyboard layout
 is independent of the console keyboard choice and is preserved.
 
-The deployment uses the merged files in this checkout, including the source
-repository's working-tree Hyprland configuration; it does not clone a second
-deployment repository. Dotfiles link into `~/.local/deploy`, so keep it there.
+The system package deployment remains part of the installer bundle. User
+dotfiles, Noctalia settings, wallpaper, launcher shortcuts and update scripts
+live in the pinned `debianzfs-config` repository at
+`~/.local/debianzfs-config`. After `git pull`, rerun
+`~/.local/debianzfs-config/deploy.sh`; it updates symlinks and shortcuts while
+backing up replaced files. That checkout is the only deployment repository
+kept in the installed user's home.
 Profile choices persist in `~/.local/state/debian-deploy/settings.sh` for later
 reruns. System operations run as root; user configuration, fonts and plugins
 run as your account with its HOME and XDG paths. There is no temporary sudo

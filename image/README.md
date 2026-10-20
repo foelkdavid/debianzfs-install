@@ -2,14 +2,22 @@
 
 `build.sh` builds the amd64 Debian 13 Trixie UEFI live ISO. The live desktop is
 configured by the bundled `deploy/deploy.sh`, package arrays in
-`deploy/vars.sh`, and the repository dotfiles. The live session uses the Intel
+`deploy/vars.sh`, and the newest published version tag in
+`foelkdavid/debianzfs-config` for user files. The installer submodule supplies
+a fallback snapshot; image builds resolve the latest `v*` config tag at build
+time and bundle that tagged checkout for both live and installed users.
+The live session uses the Intel
 profile for its generic Mesa desktop; the ISO's local APT repository includes
 all five installer GPU profiles, including both VM guest integrations.
 The live user's Noctalia session uses the bundled plugin-free Gruvbox settings
 and Debian wallpaper at `/opt/media/wall/debianzfs_1.png`.
 NetworkManager starts with wired DHCP, and `wpa_supplicant` provides Wi-Fi
-configuration through Noctalia's network panel. A **DebianZFS Help** desktop launcher opens
-the documentation site in Firefox.
+configuration through Noctalia's network panel. The image restores
+`/etc/resolv.conf` at boot as a link to NetworkManager's runtime resolver file.
+Noctalia auto-lock is disabled for the autologin live user. **DebianZFS Help**
+opens the documentation site, and **DebianZFS Ticket** opens the pre-labeled
+GitHub issue form; both have bundled icons and are also installed in the
+system built by the installer.
 
 The image also contains the installer and a tarball for debootstrap's Debian
 base packages. During installation, the ISO is mounted read-only into the

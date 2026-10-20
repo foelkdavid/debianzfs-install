@@ -5,7 +5,8 @@
    displayed, then stops because support is pending. Use live media rather than
    an installer rescue shell.
 2. Connect the live environment to the internet (wired or Wi-Fi), then install
-   `git`, `ca-certificates` and `curl`. Clone this repository's `v1.0.0` branch.
+   `git`, `ca-certificates` and `curl`. Clone this repository's `v1.0.0` branch
+   with submodules (`git clone --recurse-submodules ...`).
 3. Run `sudo ./install.sh`. Quick local checks lead straight to configuration;
    no package updates or downloads run before you finish the questions. The
    display identifies the detected boot mode and log location. If Secure Boot
@@ -16,8 +17,9 @@
    keyboard question does not change Hyprland's German/Bone layout.
 5. Choose whether to deploy the desktop (default yes). If enabled, select a
    GPU profile; VM mode also offers guest integration and software rendering.
-   Automatic VM detection happens in the live environment. DHCP applies to
-   the chosen network manager: NetworkManager for desktop, networkd for clean.
+   Automatic VM detection happens in the live environment. Both clean and
+   desktop installations use NetworkManager and `wpa_supplicant`; DHCP controls
+   whether Ethernet gets an automatic connection.
 6. Confirm the account password and, if encrypted, the ZFS passphrase. Use a
    passphrase you can type with ZFSBootMenu's US keyboard. Values are hidden
    and never logged. Review the entire summary, especially the ERASE disks.
@@ -36,9 +38,9 @@
    log in using your configured username and account password.
 10. With desktop deployment, log in on TTY1: Hyprland starts after the normal
     login. Exiting returns to your shell. Other TTYs and SSH remain shells.
-    Keep `~/.local/deploy`: dotfiles link into it. For later deployment changes,
-    run `~/.local/deploy/deploy.sh --dry-run`, then run it as your regular user.
-    Saved settings can be overridden with environment variables or edited in
+    Keep `~/.local/debianzfs-config`. After `git pull`, run
+    `~/.local/debianzfs-config/deploy.sh` as your regular user to refresh the
+    links and desktop shortcuts. Saved graphics settings are in
     `~/.local/state/debian-deploy/settings.sh`.
 
 If installation fails, read the failed stage and complete live log before

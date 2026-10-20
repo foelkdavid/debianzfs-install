@@ -39,9 +39,9 @@ Syntax/static checks:
 ```sh
 bash -n install.sh
 for file in lib/*.sh deploy/*.sh deploy/scripts/*.sh tests/*.sh \
-  deploy/dotfiles/fonts/*.sh deploy/dotfiles/zsh/*.sh; do bash -n "$file"; done
+  debianzfs-config/*.sh debianzfs-config/scripts/*/*.sh; do bash -n "$file"; done
 shellcheck -x install.sh lib/*.sh deploy/*.sh deploy/scripts/*.sh tests/*.sh \
-  deploy/dotfiles/fonts/*.sh deploy/dotfiles/zsh/*.sh
+  debianzfs-config/*.sh debianzfs-config/scripts/*/*.sh
 ```
 
 Run the following only in **disposable Debian Trixie containers**. They require
