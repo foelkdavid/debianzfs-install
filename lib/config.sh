@@ -25,7 +25,7 @@ bundled_files_check() {
     local file
     for file in lib/{ui,config,target}.sh services/efisync/{efisync.sh,efisync.service} \
         services/zfs-autosnap/{zfs-autosnap.sh,zfs-autosnap-status.sh,zfs-autosnap.service,jobs.conf} \
-        deploy/{deploy.sh,vars.sh,scripts/debian-sources.py,scripts/user-setup.sh} \
+        deploy/{deploy.sh,vars.sh,scripts/debian-sources.py,scripts/user-setup.sh,noctalia/settings.toml,wallpapers/debianzfs_1.png,desktop/debianzfs-help.desktop} \
         deploy/dotfiles/{hypr/hyprland.lua,alacritty/alacritty.toml,gtk-3.0/settings.ini,nvim/init.lua,nvim/lua/options.lua,zsh/zshrc,zsh/aliases,zsh/getplugins.sh,fonts/getfonts.sh}; do
         [[ -s $REPO_DIR/$file ]] || { failhard "Missing bundled file: $file"; return 1; }
     done

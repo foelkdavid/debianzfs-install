@@ -159,6 +159,10 @@ EOF
 deploy_desktop() {
     [[ $DEBIAN_DESKTOP == true ]] || return 0
     local home="/home/$DEBIAN_SUDOUSER"
+    install -d -m 755 "$TARGET/opt/media/wall"
+    install -m 644 "$REPO_DIR/deploy/wallpapers/debianzfs_1.png" \
+        "$TARGET/opt/media/wall/debianzfs_1.png"
+    chroot_run chown -R "$DEBIAN_SUDOUSER:$DEBIAN_SUDOUSER" /opt/media/wall
     install -d -m 755 "$TARGET$home/.local/deploy"
     cp -a "$REPO_DIR/deploy/." "$TARGET$home/.local/deploy/"
     chroot_run chown -R "$DEBIAN_SUDOUSER:$DEBIAN_SUDOUSER" "$home/.local"

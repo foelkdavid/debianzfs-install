@@ -16,7 +16,10 @@ repository containing the current desktop packages for all five GPU profiles.
 This keeps the live desktop and installed desktop sourced from this repository
 while letting target setup reuse packages from the ISO. Remaining network work
 such as refreshing repository metadata, fonts/plugins and ZFSBootMenu still
-requires internet access.
+requires internet access. The live and installed desktops use the bundled
+plugin-free Gruvbox Noctalia settings and Debian wallpaper.
+NetworkManager supports wired DHCP and Wi-Fi configuration, and a **DebianZFS
+Help** launcher opens the project documentation in Firefox.
 
 Log into the live desktop, open a terminal and run this command from any
 directory:

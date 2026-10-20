@@ -6,7 +6,9 @@ REPO_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 # shellcheck source=deploy/vars.sh
 source "$REPO_DIR/vars.sh"
 CONFIG_DIR=${XDG_CONFIG_HOME:-$HOME/.config}
+DATA_DIR=${XDG_DATA_HOME:-$HOME/.local/share}
 STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/debian-deploy
+NOCTALIA_STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/noctalia
 WORK_DIR=$(mktemp -d)
 trap 'rm -rf -- "$WORK_DIR"' EXIT
 BACKUP_DIR="$STATE_DIR/backups/$(date +%Y%m%d-%H%M%S)-$$"
@@ -53,11 +55,22 @@ bash "$REPO_DIR/dotfiles/zsh/getplugins.sh"
 bash "$REPO_DIR/dotfiles/fonts/getfonts.sh"
 xdg-user-dirs-update
 
-# Seed the graphical authentication agent for a new Noctalia installation.
+# Seed the graphical authentication agent and the bundled Noctalia settings.
 mkdir -p -- "$CONFIG_DIR/noctalia"
 if [[ ! -e "$CONFIG_DIR/noctalia/config.toml" ]]; then
     printf '%s\n' '[shell]' 'polkit_agent = true' > "$CONFIG_DIR/noctalia/config.toml"
 fi
+install -d -m 755 "$NOCTALIA_STATE_DIR"
+if [[ ! -e "$NOCTALIA_STATE_DIR/settings.toml" ]]; then
+    install -m 644 "$REPO_DIR/noctalia/settings.toml" "$NOCTALIA_STATE_DIR/settings.toml"
+fi
+DESKTOP_DIR=$(xdg-user-dir DESKTOP 2>/dev/null || true)
+[[ -n $DESKTOP_DIR ]] || DESKTOP_DIR="$HOME/Desktop"
+install -d -m 755 "$DESKTOP_DIR" "$DATA_DIR/applications"
+install -m 755 "$REPO_DIR/desktop/debianzfs-help.desktop" \
+    "$DESKTOP_DIR/DebianZFS Help.desktop"
+install -m 644 "$REPO_DIR/desktop/debianzfs-help.desktop" \
+    "$DATA_DIR/applications/debianzfs-help.desktop"
 
 # Hyprland's portal handles screen sharing; GTK supplies the file chooser.
 mkdir -p -- "$CONFIG_DIR/xdg-desktop-portal"

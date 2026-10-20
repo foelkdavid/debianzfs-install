@@ -116,6 +116,11 @@ set -Eeuo pipefail
 set +x
 getent group sudo >/dev/null || groupadd sudo
 useradd --create-home --groups sudo --shell /bin/bash liveuser
+systemctl --root=/ --no-reload enable NetworkManager.service
+install -d -o liveuser -g liveuser -m 755 /opt/media/wall
+install -o liveuser -g liveuser -m 644 \
+    /opt/debianzfs-install/deploy/wallpapers/debianzfs_1.png \
+    /opt/media/wall/debianzfs_1.png
 install -d -m 755 /etc/sudoers.d
 printf 'liveuser ALL=(root) NOPASSWD: /opt/debianzfs-install/install.sh\n' \
     > /etc/sudoers.d/debianzfs-live-installer

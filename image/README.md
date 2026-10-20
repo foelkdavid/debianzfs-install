@@ -5,6 +5,11 @@ configured by the bundled `deploy/deploy.sh`, package arrays in
 `deploy/vars.sh`, and the repository dotfiles. The live session uses the Intel
 profile for its generic Mesa desktop; the ISO's local APT repository includes
 all five installer GPU profiles, including both VM guest integrations.
+The live user's Noctalia session uses the bundled plugin-free Gruvbox settings
+and Debian wallpaper at `/opt/media/wall/debianzfs_1.png`.
+NetworkManager starts with wired DHCP, and `wpa_supplicant` provides Wi-Fi
+configuration through Noctalia's network panel. A **DebianZFS Help** desktop launcher opens
+the documentation site in Firefox.
 
 The image also contains the installer and a tarball for debootstrap's Debian
 base packages. During installation, the ISO is mounted read-only into the

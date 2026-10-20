@@ -1,11 +1,22 @@
 # Bundled Debian desktop deployment
 
 Sets up Debian 13 Trixie with Hyprland, Noctalia, Alacritty, Thunar, Firefox ESR,
-Zsh, audio, networking, Bluetooth, fonts, plugins and linked dotfiles.
+Zsh, audio, networking, Bluetooth, fonts, Zsh plugins and linked dotfiles.
 Hyprland comes from Trixie backports; Noctalia uses its official APT repository.
 The parent ZFS installer offers this deployment by default and copies this
 bundled directory into the configured account's permanent `~/.local/deploy`.
 It does not clone a fresh deployment repository.
+
+Noctalia uses the bundled plugin-free v5 settings and Gruvbox theme. The
+Debian wallpaper is installed at `/opt/media/wall/debianzfs_1.png`, which is
+also the configured default. The installer assigns `/opt/media/wall` to the
+configured sudo user. Existing `~/.local/state/noctalia/settings.toml` files
+are preserved during standalone deployment reruns.
+NetworkManager starts in the live image and installed desktop. The live image
+uses wired DHCP by default; the installer carries the selected DHCP setting
+into the installed system. Wi-Fi can be selected and configured from Noctalia's
+network panel. A **DebianZFS Help** launcher on the desktop and in the app
+launcher opens `https://docs.debian.foelk.com` in Firefox.
 
 ## Standalone usage
 

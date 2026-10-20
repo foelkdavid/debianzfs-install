@@ -4,6 +4,7 @@ Host-safe functional and pseudo-terminal tests (Python 3 and Bash required):
 
 ```sh
 python3 tests/test_installer.py
+python3 tests/test_noctalia_bundle.py
 ```
 
 Terminal-emulator regressions additionally require the `pyte` Python package
