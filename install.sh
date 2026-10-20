@@ -86,16 +86,59 @@ partition_disks() {
             sgdisk -n2:0:-10MiB -t2:bf00 -c2:zfs "$d" >/dev/null
         fi
         ok "Created ZFS partition on $d"
-        partprobe "$d" >/dev/null 2>&1 || true
-        udevadm settle >/dev/null 2>&1 || true
+        partprobe "$d" || { failhard "Could not reread the partition table on $d."; return 1; }
+        udevadm settle --timeout=10 || { failhard "Partition events did not settle for $d."; return 1; }
     done
+}
+
+pool_partition_ready() {
+    [[ -b $1 && $(lsblk -dnro TYPE "$1") == part ]]
+}
+
+resolve_pool_device() {
+    local device=$1 uuid alias attempt
+    # A fresh partition can appear after partprobe/udevadm return. Probe the
+    # GPT metadata directly: normal blkid output can omit PARTUUID or be stale.
+    for ((attempt = 0; attempt < 40; attempt++)); do
+        if pool_partition_ready "$device"; then
+            uuid=$(blkid --probe --match-tag PART_ENTRY_UUID --output value "$device" 2>/dev/null) || uuid=''
+            if [[ $uuid =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]]; then
+                alias="/dev/disk/by-partuuid/${uuid,,}"
+                if [[ -b $alias && $alias -ef $device ]]; then
+                    printf '%s\n' "$alias"
+                else
+                    # ZFS also identifies vdevs by their on-disk GUIDs. A late
+                    # udev alias must not prevent using the verified partition.
+                    info "PARTUUID link is not ready; using verified partition $device." >&2
+                    printf '%s\n' "$device"
+                fi
+                return 0
+            fi
+        fi
+        sleep .25
+    done
+    failhard "No block partition with a readable GPT UUID appeared for $device within 10 seconds."
+    return 1
 }
 
 create_zpool() {
     [[ -n "${POOL_DEVICE_1:-}" ]] || {
         failhard "POOL_DEVICE_1 not set"
-        exit 1
+        return 1
     }
+    local first second
+    local -a vdevs=()
+    first=$(resolve_pool_device "$POOL_DEVICE_1") || return 1
+    if [[ ${DEBIAN_MIRROR_MODE:-false} == true ]]; then
+        [[ -n ${POOL_DEVICE_2:-} ]] || { failhard 'The second mirror partition is not set.'; return 1; }
+        second=$(resolve_pool_device "$POOL_DEVICE_2") || return 1
+        [[ $first != "$second" && ! $first -ef $second ]] || {
+            failhard 'Mirror partitions refer to the same block device.'; return 1;
+        }
+        vdevs=(mirror "$first" "$second")
+    else
+        vdevs=("$first")
+    fi
 
     local common_opts=(
         -f
@@ -113,20 +156,10 @@ create_zpool() {
     if [[ $DEBIAN_ENCRYPTION == true ]]; then
         common_opts+=(-O encryption=aes-256-gcm -O "keylocation=file://$WORK_DIR/zroot.key" -O keyformat=passphrase)
     fi
-    if [[ "${DEBIAN_MIRROR_MODE:-false}" == true && -n "${POOL_DEVICE_2:-}" ]]; then
-        info "[Creating ZFS pool 'zroot' as mirror]"
-        zpool create "${common_opts[@]}" zroot mirror \
-            "/dev/disk/by-partuuid/$(blkid -s PARTUUID -o value "$POOL_DEVICE_1")" \
-            "/dev/disk/by-partuuid/$(blkid -s PARTUUID -o value "$POOL_DEVICE_2")"
-        POOL_OWNED=true
-        ok "Created mirrored pool zroot"
-    else
-        info "[Creating ZFS pool 'zroot']"
-        zpool create "${common_opts[@]}" zroot \
-            "/dev/disk/by-partuuid/$(blkid -s PARTUUID -o value "$POOL_DEVICE_1")"
-        POOL_OWNED=true
-        ok "Created pool zroot"
-    fi
+    info "[Creating ZFS pool 'zroot' on ${vdevs[*]}]"
+    zpool create "${common_opts[@]}" zroot "${vdevs[@]}" || return
+    POOL_OWNED=true
+    ok "Created pool zroot"
     unset ZFS_PASSPHRASE
 }
 

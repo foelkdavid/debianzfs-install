@@ -249,12 +249,125 @@ DEBIAN_MIRROR_MODE={mirrored}
 POOL_DEVICE_1=/dev/mock-a2
 POOL_DEVICE_2=/dev/mock-b2
 zpool() {{ printf 'zpool:%s\\n' "$*"; }}
-blkid() {{ printf uuid; }}
+resolve_pool_device() {{ printf '%s\\n' "$1"; }}
 create_zpool
 [[ $POOL_OWNED == true ]]
 ''')
                 self.assertEqual("encryption=aes-256-gcm" in output, encrypted == "true")
                 self.assertEqual("zroot mirror" in output, mirrored == "true")
+
+    def test_nvme_partition_names_with_and_without_swap(self):
+        for swap, partition in (("0", "2"), ("2", "3")):
+            output = self.bash(f'''
+DEBIAN_DISK1=/dev/nvme0n1 DEBIAN_DISK2=/dev/nvme1n1
+DEBIAN_SWAPSIZE={swap}
+set_zfs_vars
+printf 'DEVICES:%s,%s,%s,%s\\n' "$BOOT_DEVICE_1" "$POOL_DEVICE_1" "$BOOT_DEVICE_2" "$POOL_DEVICE_2"
+''')
+            self.assertIn(f"DEVICES:/dev/nvme0n1p1,/dev/nvme0n1p{partition},/dev/nvme1n1p1,/dev/nvme1n1p{partition}", output)
+
+    def test_fresh_partition_probe_retries_and_handles_missing_alias(self):
+        output = self.bash('''
+WORK_DIR="$TEST_ROOT"
+DEBIAN_ENCRYPTION=false DEBIAN_MIRROR_MODE=false
+POOL_DEVICE_1="$TEST_ROOT/nvme0n1p2"
+touch "$POOL_DEVICE_1"
+pool_partition_ready() {
+    local n=0
+    [[ ! -f $TEST_ROOT/ready-count ]] || read -r n < "$TEST_ROOT/ready-count"
+    printf '%s\\n' "$((n+1))" > "$TEST_ROOT/ready-count"
+    ((n >= 2))
+}
+blkid() {
+    [[ $* == "--probe --match-tag PART_ENTRY_UUID --output value $POOL_DEVICE_1" ]] || return 99
+    local n=0
+    [[ ! -f $TEST_ROOT/probe-count ]] || read -r n < "$TEST_ROOT/probe-count"
+    printf '%s\\n' "$((n+1))" > "$TEST_ROOT/probe-count"
+    ((n >= 2)) || return 2
+    echo 12345678-1234-1234-1234-123456789abc
+}
+sleep() { :; }
+zpool() { printf 'ZPOOL:%s\\n' "$*"; [[ ${!#} == "$POOL_DEVICE_1" ]]; }
+create_zpool
+[[ $POOL_OWNED == true ]]
+[[ $(cat "$TEST_ROOT/ready-count") == 5 && $(cat "$TEST_ROOT/probe-count") == 3 ]]
+''')
+        self.assertIn("using verified partition", output)
+        self.assertIn("ZPOOL:create", output)
+        self.assertNotIn("zroot /dev/disk/by-partuuid/", output)
+
+    def test_missing_or_invalid_partition_uuid_never_calls_zpool(self):
+        for result in ("return 2", "printf ''", "echo not-a-uuid", "echo 12345678-1234-1234-1234-123456789abc; return 8"):
+            with self.subTest(result=result):
+                output = self.bash('''
+DEBIAN_ENCRYPTION=false DEBIAN_MIRROR_MODE=false
+POOL_DEVICE_1=/dev/nvme0n1p2
+pool_partition_ready() { return 0; }
+sleep() { :; }
+zpool() { echo UNEXPECTED-POOL-CREATE; }
+blkid() { ''' + result + '''; }
+create_zpool
+''', expected=1)
+                self.assertNotIn("UNEXPECTED-POOL-CREATE", output)
+                self.assertIn("/dev/nvme0n1p2 within 10 seconds", output)
+        output = self.bash('''
+DEBIAN_ENCRYPTION=false DEBIAN_MIRROR_MODE=false
+POOL_DEVICE_1="$TEST_ROOT/missing-nvme0n1p2"
+sleep() { :; }
+blkid() { echo UNEXPECTED-PROBE; }
+zpool() { echo UNEXPECTED-POOL-CREATE; }
+create_zpool
+''', expected=1)
+        self.assertNotIn("UNEXPECTED", output)
+
+    def test_mirror_requires_both_resolved_and_distinct_partitions(self):
+        fixture = '''
+DEBIAN_ENCRYPTION=false DEBIAN_MIRROR_MODE=true
+POOL_DEVICE_1="$TEST_ROOT/a" POOL_DEVICE_2="$TEST_ROOT/b"
+touch "$POOL_DEVICE_1" "$POOL_DEVICE_2"
+zpool() { echo UNEXPECTED-POOL-CREATE; }
+'''
+        for code in (
+            'unset POOL_DEVICE_2; resolve_pool_device() { echo "$1"; }',
+            'resolve_pool_device() { [[ $1 == "$POOL_DEVICE_1" ]] || return 2; echo "$1"; }',
+            'resolve_pool_device() { echo "$POOL_DEVICE_1"; }',
+            'rm "$POOL_DEVICE_2"; ln -s "$POOL_DEVICE_1" "$POOL_DEVICE_2"; resolve_pool_device() { echo "$1"; }',
+        ):
+            with self.subTest(code=code):
+                output = self.bash(fixture + code + '\ncreate_zpool', expected=1)
+                self.assertNotIn("UNEXPECTED-POOL-CREATE", output)
+
+    def test_zpool_failure_preserves_status_and_does_not_claim_ownership(self):
+        self.bash('''
+DEBIAN_ENCRYPTION=false DEBIAN_MIRROR_MODE=false POOL_OWNED=false
+POOL_DEVICE_1=/dev/nvme0n1p2
+resolve_pool_device() { echo "$1"; }
+zpool() { return 17; }
+if create_zpool; then exit 99; else status=$?; fi
+[[ $status == 17 && $POOL_OWNED == false ]]
+''')
+
+    def test_partition_reread_and_udev_errors_stop_partitioning(self):
+        fixture = '''
+DEBIAN_DISK1=/dev/nvme0n1 DEBIAN_DISK2=/dev/nvme1n1
+DEBIAN_MIRROR_MODE=true DEBIAN_SWAPSIZE=0
+sgdisk() { echo "PARTITION:$*"; }
+'''
+        output = self.bash(fixture + '''
+partprobe() { return 17; }
+udevadm() { echo UNEXPECTED-UDEV; }
+partition_disks
+''', expected=1)
+        self.assertIn("Could not reread the partition table on /dev/nvme0n1", output)
+        self.assertNotIn("UNEXPECTED-UDEV", output)
+        self.assertNotIn("/dev/nvme1n1", output)
+        output = self.bash(fixture + '''
+partprobe() { :; }
+udevadm() { [[ $* == 'settle --timeout=10' ]]; return 17; }
+partition_disks
+''', expected=1)
+        self.assertIn("Partition events did not settle for /dev/nvme0n1", output)
+        self.assertNotIn("/dev/nvme1n1", output)
 
     def test_disk_validation_rejects_busy_small_duplicate_and_partition(self):
         fixture = '''

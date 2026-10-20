@@ -96,6 +96,22 @@ filesystems to the guest. A container may expose `/dev/kvm` for acceleration
 while QEMU sees only `/tmp` disk images and read-only ISO/repository mounts.
 No host installation or physical-GPU validation is implied by these tests.
 
+## NVMe pool-device resolution (2026-10-20)
+
+- All 37 installer tests passed, including missing/invalid UUIDs, delayed block
+  nodes/probes, missing udev aliases, NVMe partition numbering with swap,
+  missing/duplicate mirror members, partition reread/udev failures, and pool
+  failure status/ownership. Bash syntax and ShellCheck passed.
+- A Debian live guest with two new emulated NVMe disks passed eight native
+  partition/pool/dataset tests: single/mirror × swap off/on × encryption off/on.
+  Each case created and mounted the datasets, exported/reimported the pool,
+  and destroyed only its disposable test pool.
+- The old code reproduced the reported empty `/dev/disk/by-partuuid/` error
+  when a failed UUID lookup was injected in that VM. Fresh uninjected NVMe
+  probing succeeded there, so the laptop's underlying lookup failure has not
+  been reproduced or diagnosed on physical hardware.
+- These are storage-stage tests, not new full installations or reboot tests.
+
 ## Plymouth and ISO menu appearance (2026-10-20)
 
 - Four new boot tests and all 31 installer tests passed on the development
