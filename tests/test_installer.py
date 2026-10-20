@@ -112,6 +112,25 @@ run_installation
                 self.assertLess(output.index('Deploy Hyprland desktop'), output.index('Rebuild final initramfs'))
                 self.assertLess(output.index('Rebuild final initramfs'), output.index('Synchronize mirrored ESPs'))
 
+    def test_desktop_deployment_gives_user_ownership_of_local_parent(self):
+        target = self.root / "target"
+        target.mkdir()
+        output = self.bash(f'''
+TARGET={target}
+REPO_DIR="$REPO"
+DEBIAN_DESKTOP=true DEBIAN_SUDOUSER=david
+GPU_DRIVER=intel VM_GUEST=none VM_SOFTWARE_RENDERING=false
+DEBIANZFS_CONFIG_SOURCE="$REPO/debianzfs-config"
+chroot_run() {{ printf 'chroot:%s\\n' "$*" >> "$TEST_ROOT/commands"; }}
+deploy_desktop
+''')
+        commands = (self.root / "commands").read_text().splitlines()
+        self.assertIn("chroot:chown david:david /home/david/.local", commands)
+        self.assertLess(commands.index("chroot:chown david:david /home/david/.local"),
+                        next(index for index, line in enumerate(commands)
+                             if line.startswith("chroot:env GPU_DRIVER=")))
+        self.assertTrue((target / "home/david/.local/debianzfs-config/deploy.sh").is_file())
+
     def test_configuration_and_restart_precede_all_preparation(self):
         fixture = self.ui() + '''
 root_privileges_check() { :; }
@@ -326,6 +345,19 @@ remove_bundled_apt_cache_config
         self.assertIn("hyprland/trixie-backports", manifest("live"))
         self.assertIn("libxkbcommon-x11-0/trixie-backports", manifest("live"))
         self.assertNotIn("libxkbcommon0", manifest("base"))
+
+    def test_image_installer_shortcut_is_live_only_and_keeps_terminal_open(self):
+        shortcut = REPO / "image/live-assets/debianzfs-install.desktop"
+        icon = REPO / "image/live-assets/debianzfs_install.png"
+        build = (REPO / "image/build.sh").read_text()
+        desktop = shortcut.read_text()
+        self.assertTrue(icon.is_file())
+        self.assertIn("Exec=alacritty --hold -e debianzfs-install", desktop)
+        self.assertIn("Icon=debianzfs_install", desktop)
+        self.assertIn('"$IMAGE_ROOT/live-assets/debianzfs_install.png"', build)
+        self.assertIn('"$IMAGE_ROOT/live-assets/debianzfs-install.desktop"', build)
+        self.assertIn('"/home/liveuser/Desktop/DebianZFS Install.desktop"', build)
+        self.assertFalse((REPO / "debianzfs-config/scripts/installer-shortcut").exists())
 
     def test_mirrored_esp_mounts_allow_a_missing_disk(self):
         self.bash('''

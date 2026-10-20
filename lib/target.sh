@@ -160,6 +160,10 @@ deploy_desktop() {
     git -C "$TARGET$home/.local/debianzfs-config" checkout -B main HEAD
     git -C "$TARGET$home/.local/debianzfs-config" config branch.main.remote origin
     git -C "$TARGET$home/.local/debianzfs-config" config branch.main.merge refs/heads/main
+    # The checkout staging directory is created by the root installer. Give
+    # its parent to the user too, so user deployment can create ~/.local/share
+    # for fonts and other XDG data while running with the target user's HOME.
+    chroot_run chown "$DEBIAN_SUDOUSER:$DEBIAN_SUDOUSER" "$home/.local"
     chroot_run chown -R "$DEBIAN_SUDOUSER:$DEBIAN_SUDOUSER" "$home/.local/debianzfs-config"
     install -d -m 755 "$TARGET/opt/debianzfs-deploy"
     cp -a "$REPO_DIR/deploy/." "$TARGET/opt/debianzfs-deploy/"

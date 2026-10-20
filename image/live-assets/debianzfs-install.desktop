@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=DebianZFS Install
+Comment=Install DebianZFS on this computer
+Exec=alacritty --hold -e debianzfs-install
+Icon=debianzfs_install
+Terminal=false
+StartupNotify=true
+Categories=System;Utility;

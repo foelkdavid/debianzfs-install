@@ -126,6 +126,10 @@ git clone --local --no-hardlinks "$CONFIG_SOURCE_DIR" \
     "$CONFIG_ROOT/config/includes.chroot/opt/debianzfs-install/debianzfs-config"
 git clone --local --no-hardlinks "$CONFIG_SOURCE_DIR" \
     "$CONFIG_ROOT/config/includes.chroot/opt/debianzfs-config"
+install -D -m 644 "$IMAGE_ROOT/live-assets/debianzfs_install.png" \
+    "$CONFIG_ROOT/config/includes.chroot/usr/share/pixmaps/debianzfs_install.png"
+install -D -m 644 "$IMAGE_ROOT/live-assets/debianzfs-install.desktop" \
+    "$CONFIG_ROOT/config/includes.chroot/usr/share/debianzfs-live/debianzfs-install.desktop"
 install -d "$CONFIG_ROOT/config/includes.chroot/opt/debianzfs-install/cache"
 cp -a "$REPO_ROOT/." "$CONFIG_ROOT/config/includes.chroot/opt/debianzfs-install/cache/"
 cat > "$CONFIG_ROOT/config/hooks/normal/0100-debianzfs-live.hook.chroot" <<'HOOK'
@@ -178,6 +182,10 @@ GPU_DRIVER=intel VM_GUEST=none VM_SOFTWARE_RENDERING=false \
 python3 /opt/debianzfs-install/deploy/scripts/disable-live-lock.py \
     /home/liveuser/.local/state/noctalia/settings.toml
 chown liveuser:liveuser /home/liveuser/.local/state/noctalia/settings.toml
+install -d -o liveuser -g liveuser -m 755 /home/liveuser/Desktop
+install -o liveuser -g liveuser -m 755 \
+    /usr/share/debianzfs-live/debianzfs-install.desktop \
+    "/home/liveuser/Desktop/DebianZFS Install.desktop"
 HOOK
 chmod 755 "$CONFIG_ROOT/config/hooks/normal/0100-debianzfs-live.hook.chroot"
 
