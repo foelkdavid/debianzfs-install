@@ -1,0 +1,47 @@
+desktop-image: "../splash.png"
+title-text: "DebianZFS Live"
+title-color: "#ffffff"
+title-font: "Unifont Regular 16"
+message-font: "Unifont Regular 16"
+terminal-font: "Unifont Regular 16"
+
++ boot_menu {
+    left = 10%
+    width = 80%
+    top = 62%
+    height = 25%
+    item_color = "#dddddd"
+    item_font = "Unifont Regular 16"
+    selected_item_color = "#ff547d"
+    selected_item_font = "Unifont Regular 16"
+    item_height = 20
+    item_spacing = 6
+    icon_width = 0
+    icon_height = 0
+    item_icon_space = 0
+}
+
++ label {
+    top = 100%-42
+    left = 5%
+    width = 90%
+    height = 20
+    text = "@KEYMAP_SHORT@"
+    align = "center"
+    color = "#ffffff"
+    font = "Unifont Regular 16"
+}
+
++ progress_bar {
+    id = "__timeout__"
+    left = 15%
+    top = 100%-68
+    width = 70%
+    height = 16
+    text = "@TIMEOUT_NOTIFICATION_LONG@"
+    font = "Unifont Regular 16"
+    text_color = "#ffffff"
+    fg_color = "#d70a53"
+    bg_color = "#202028"
+    border_color = "#d70a53"
+}

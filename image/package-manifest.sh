@@ -9,12 +9,12 @@ BASE_PACKAGES=(
     debootstrap gdisk dosfstools rsync inotify-tools parted util-linux kmod
     curl kbd psmisc console-setup keyboard-configuration xkb-data openssl mokutil
     procps zfsutils-linux zfs-dkms zfs-initramfs zfs-zed dkms
-    sudo locales efibootmgr systemd-sysv systemd-resolved
+    sudo locales efibootmgr systemd-sysv systemd-resolved plymouth plymouth-themes
 )
 LIVE_PACKAGES=(
     live-boot live-config live-config-systemd systemd-sysv sudo zsh dbus-user-session
     network-manager wpasupplicant wireless-regdb bluez pipewire-audio wireplumber
-    desktop-base xwayland xkb-data
+    desktop-base xwayland xkb-data plymouth plymouth-themes
     debootstrap gdisk dosfstools rsync inotify-tools parted util-linux kmod curl kbd
     psmisc console-setup keyboard-configuration xkb-data openssl mokutil procps
     zfsutils-linux zfs-dkms zfs-initramfs zfs-zed dkms linux-image-amd64

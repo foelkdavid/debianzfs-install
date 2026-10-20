@@ -224,7 +224,7 @@ EOF
     apt_install_target linux-image-amd64 linux-headers-amd64 dkms zfs-dkms \
         zfsutils-linux zfs-initramfs zfs-zed \
         sudo locales console-setup keyboard-configuration efibootmgr dosfstools \
-        rsync inotify-tools util-linux kmod systemd-sysv
+        rsync inotify-tools util-linux kmod systemd-sysv plymouth plymouth-themes
     chroot_run zgenhostid -f
     ok "Installed target packages"
 }
@@ -284,7 +284,7 @@ EOF
     sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' "${TARGET}/etc/locale.gen"
     chroot_run locale-gen
     chroot_run update-locale LANG=en_US.UTF-8 LANGUAGE=en_US:en
-    zfs set org.zfsbootmenu:commandline="quiet" zroot/ROOT
+    zfs set org.zfsbootmenu:commandline="quiet splash" zroot/ROOT
     if [[ $DEBIAN_ENCRYPTION == true ]]; then
         zfs set org.zfsbootmenu:keysource=zroot/ROOT/debian zroot
     fi

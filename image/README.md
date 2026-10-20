@@ -22,6 +22,21 @@ launcher opens the installer in Alacritty and leaves the terminal open when it
 exits. It is available from the Hyprland app launcher and is not placed in a
 desktop folder.
 
+The ISO's GRUB and Syslinux menus use the selected config release's
+`wallpapers/debianzfs_1.png`. `prepare-boot-menu.py` uses Pillow in the build
+container to generate fitted, dimmed 800×600 GRUB and 640×480 Syslinux
+backgrounds; readable menu templates are under `image/boot-menu/`. Ordinary
+live-build menu entries, firmware settings, and recovery options are retained.
+
+The live system uses Debian's stock Plymouth `spinner` theme with `quiet splash`.
+The image hook selects the theme and rebuilds its initramfs. The same theme is
+installed for clean and desktop target installations, before their final
+initramfs rebuild. It does not use the wallpaper. Press Escape for boot output.
+Installed systems retain the existing ZFSBootMenu selection and encryption
+unlock screens before Plymouth starts; no ZFSBootMenu EFI image is customized.
+Graphical output depends on the firmware/framebuffer and GPU driver. Preparing
+these files does not update an existing ISO; rebuild the image to include them.
+
 The image also contains the installer and a tarball for debootstrap's Debian
 base packages. During installation, the ISO is mounted read-only into the
 target chroot and APT pins its matching package repository, so base, kernel,

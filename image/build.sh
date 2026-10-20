@@ -87,7 +87,7 @@ apt-get --download-only --reinstall -o "Dir::Cache::archives=$APT_CACHE" \
 # the target dependency solver, even though the installer target is fresh.
 apt-get install -y --no-install-recommends \
     live-build debootstrap xorriso squashfs-tools syslinux-common isolinux \
-    grub-pc-bin grub-efi-amd64-bin dpkg-dev apt-utils git rsync python3
+    grub-pc-bin grub-efi-amd64-bin dpkg-dev apt-utils git rsync python3 python3-pil
 
 find "$APT_CACHE" -maxdepth 1 -type f -name '*.deb' -exec cp -n -t "$REPO_ROOT/pool" -- {} +
 [[ -n $(find "$REPO_ROOT/pool" -maxdepth 1 -type f -name '*.deb' -print -quit) ]] || {
@@ -182,6 +182,9 @@ GPU_DRIVER=intel VM_GUEST=none VM_SOFTWARE_RENDERING=false \
 python3 /opt/debianzfs-install/deploy/scripts/disable-live-lock.py \
     /home/liveuser/.local/state/noctalia/settings.toml
 chown liveuser:liveuser /home/liveuser/.local/state/noctalia/settings.toml
+printf 'FRAMEBUFFER=y\n' > /etc/initramfs-tools/conf.d/plymouth
+plymouth-set-default-theme spinner
+update-initramfs -u -k all
 install -d -o liveuser -g liveuser -m 755 /home/liveuser/.local/share/applications
 install -o liveuser -g liveuser -m 644 \
     /usr/share/debianzfs-live/debianzfs-install.desktop \
@@ -190,11 +193,13 @@ HOOK
 chmod 755 "$CONFIG_ROOT/config/hooks/normal/0100-debianzfs-live.hook.chroot"
 
 cd "$CONFIG_ROOT"
+python3 "$IMAGE_ROOT/prepare-boot-menu.py" \
+    "$CONFIG_SOURCE_DIR/wallpapers/debianzfs_1.png" "$CONFIG_ROOT/config/bootloaders"
 lb config \
     --distribution "$RELEASE" \
     --architectures amd64 \
     --binary-images iso-hybrid \
-    --bootappend-live 'boot=live components quiet hostname=debianzfs username=liveuser' \
+    --bootappend-live 'boot=live components quiet splash hostname=debianzfs username=liveuser' \
     --archive-areas 'main contrib non-free non-free-firmware' \
     --apt-recommends false \
     --apt-indices false \

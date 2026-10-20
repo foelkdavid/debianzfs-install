@@ -176,6 +176,12 @@ deploy_desktop() {
     rm -rf -- "$TARGET/opt/debianzfs-deploy"
 }
 
+configure_plymouth() {
+    mkdir -p "$TARGET/etc/initramfs-tools/conf.d"
+    printf 'FRAMEBUFFER=y\n' > "$TARGET/etc/initramfs-tools/conf.d/plymouth"
+    chroot_run plymouth-set-default-theme spinner
+}
+
 run_installation() {
     # All destructive entry points go through this guard.
     [[ ${INSTALL_CONFIRMED:-false} == true ]] || { failhard 'Explicit start is required.'; return 1; }
@@ -193,6 +199,7 @@ run_installation() {
     fi
     run_stage 'Configure networking' configure_networking
     run_stage 'Remove image cache configuration' remove_bundled_apt_cache_config
+    run_stage 'Configure Plymouth boot splash' configure_plymouth
     run_stage 'Configure initramfs' configure_initramfs
     run_stage 'Configure swap' setup_swap
     run_stage 'Install snapshot service' install_zfs_autosnap

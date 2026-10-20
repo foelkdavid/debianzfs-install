@@ -142,6 +142,18 @@ cleanup and pool export succeed. Then reboot and log in as the account shown.
 
 Storage retains ZFSBootMenu, optional two-disk ZFS mirroring, one `/home`
 dataset, optional swap, automatic snapshots, and mirrored EFI synchronization.
+The live system and installed system (with or without the desktop) use Debian's
+stock Plymouth `spinner` theme during boot. Press Escape to show boot messages.
+On installed systems the splash starts after ZFSBootMenu; encrypted ZFS is
+still unlocked in ZFSBootMenu's existing text interface. A graphical splash
+depends on a working framebuffer/KMS driver, with text output available when
+graphics are unavailable.
+
+The ISO's GRUB and Syslinux boot menus use the bundled DebianZFS wallpaper
+instead of the default live-build background. This affects the ISO menu, not
+the installed ZFSBootMenu interface. Changes to live boot appearance require a
+new ISO build.
+
 Each disk has a 512 MiB ESP, optional swap and the remaining space for ZFS:
 
 ```text

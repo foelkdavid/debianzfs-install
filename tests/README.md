@@ -6,6 +6,7 @@ Host-safe functional and pseudo-terminal tests (Python 3 and Bash required):
 python3 tests/test_installer.py
 python3 tests/test_noctalia_bundle.py
 python3 tests/test_hyprland.py
+python3 tests/test_boot.py
 ```
 
 Terminal-emulator regressions additionally require the `pyte` Python package
@@ -42,6 +43,13 @@ directional focus/swap, and every static hardware profile. User setup runs with
 a temporary HOME to check profile symlinks, migration from generated files,
 profile switching, ownership, and saved settings. These tests do not reload the
 host compositor or establish physical multi-monitor/GPU compatibility.
+
+Boot tests require Pillow (`python3-pil` on Debian) for image checks. They verify
+that Plymouth packages are cached for the live and clean target systems, the
+stock spinner is selected in the target before the final initramfs rebuild,
+`quiet splash` is passed through ZFSBootMenu without changing encryption unlock
+properties, and both bootloader overrides receive valid RGB PNG backgrounds.
+All target writes and ZFS commands use temporary roots or mocks.
 
 Syntax/static checks:
 
@@ -87,6 +95,22 @@ Do not pass host block devices, writable host `/run`, or developer home
 filesystems to the guest. A container may expose `/dev/kvm` for acceleration
 while QEMU sees only `/tmp` disk images and read-only ISO/repository mounts.
 No host installation or physical-GPU validation is implied by these tests.
+
+## Plymouth and ISO menu appearance (2026-10-20)
+
+- Four new boot tests and all 31 installer tests passed on the development
+  host. The four boot tests also passed in a disposable Debian Trixie container.
+- ShellCheck and Bash syntax checks passed for the changed scripts.
+- The container selected the stock `spinner` theme and rebuilt a real Debian
+  6.12.113 initramfs. `lsinitramfs` confirmed the theme, animation images,
+  Plymouth binaries/configuration, and init-premount/init-bottom/panic scripts.
+- A menu-only fixture used Debian live-build to generate the GRUB configuration;
+  `grub-script-check` passed. Diskless QEMU guests displayed the themed UEFI
+  GRUB and BIOS Syslinux menus. This validates menu rendering, not BIOS target
+  installation support.
+- No complete live ISO rebuild, full live/installed-system Plymouth boot,
+  encrypted-ZFS reboot, or physical-GPU validation was performed for this
+  change. The graphical splash still depends on working framebuffer/KMS support.
 
 ## Minimal Hyprland configuration (2026-10-20)
 
