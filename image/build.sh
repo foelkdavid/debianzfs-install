@@ -182,10 +182,10 @@ GPU_DRIVER=intel VM_GUEST=none VM_SOFTWARE_RENDERING=false \
 python3 /opt/debianzfs-install/deploy/scripts/disable-live-lock.py \
     /home/liveuser/.local/state/noctalia/settings.toml
 chown liveuser:liveuser /home/liveuser/.local/state/noctalia/settings.toml
-install -d -o liveuser -g liveuser -m 755 /home/liveuser/Desktop
-install -o liveuser -g liveuser -m 755 \
+install -d -o liveuser -g liveuser -m 755 /home/liveuser/.local/share/applications
+install -o liveuser -g liveuser -m 644 \
     /usr/share/debianzfs-live/debianzfs-install.desktop \
-    "/home/liveuser/Desktop/DebianZFS Install.desktop"
+    /home/liveuser/.local/share/applications/debianzfs-install.desktop
 HOOK
 chmod 755 "$CONFIG_ROOT/config/hooks/normal/0100-debianzfs-live.hook.chroot"
 

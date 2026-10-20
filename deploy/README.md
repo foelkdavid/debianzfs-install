@@ -17,8 +17,8 @@ uses wired DHCP by default; the installer carries the selected DHCP setting
 into the installed system. Wi-Fi can be selected and configured from Noctalia's
 network panel. **DebianZFS Help** opens `https://docs.debian.foelk.com` in
 Firefox, and **DebianZFS Ticket** opens the pre-labeled GitHub issue form.
-Both launchers are installed on the desktop and in the app launcher with their
-bundled icons.
+Both launchers are available from the app menu with their bundled icons;
+deployment does not create a Desktop folder.
 
 ## Refreshing user configuration
 

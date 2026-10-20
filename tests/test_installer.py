@@ -346,7 +346,7 @@ remove_bundled_apt_cache_config
         self.assertIn("libxkbcommon-x11-0/trixie-backports", manifest("live"))
         self.assertNotIn("libxkbcommon0", manifest("base"))
 
-    def test_image_installer_shortcut_is_live_only_and_keeps_terminal_open(self):
+    def test_image_installer_launcher_is_live_only_and_keeps_terminal_open(self):
         shortcut = REPO / "image/live-assets/debianzfs-install.desktop"
         icon = REPO / "image/live-assets/debianzfs_install.png"
         build = (REPO / "image/build.sh").read_text()
@@ -356,7 +356,8 @@ remove_bundled_apt_cache_config
         self.assertIn("Icon=debianzfs_install", desktop)
         self.assertIn('"$IMAGE_ROOT/live-assets/debianzfs_install.png"', build)
         self.assertIn('"$IMAGE_ROOT/live-assets/debianzfs-install.desktop"', build)
-        self.assertIn('"/home/liveuser/Desktop/DebianZFS Install.desktop"', build)
+        self.assertIn("/home/liveuser/.local/share/applications/debianzfs-install.desktop", build)
+        self.assertNotIn("/home/liveuser/Desktop", build)
         self.assertFalse((REPO / "debianzfs-config/scripts/installer-shortcut").exists())
 
     def test_mirrored_esp_mounts_allow_a_missing_disk(self):

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Validate the bundled Noctalia settings and wallpaper integration."""
 from pathlib import Path
+import os
 import subprocess
 import sys
 import tempfile
@@ -88,6 +89,25 @@ class NoctaliaBundleTests(unittest.TestCase):
         self.assertIn('link_config "$REPO_DIR/dotfiles/zsh/zprofile" "$HOME/.zprofile"',
                       (CONFIG / "scripts/dotfiles/deploy.sh").read_text())
         self.assertTrue((CONFIG / "scripts/help-shortcuts/deploy.sh").is_file())
+
+    def test_help_shortcuts_are_app_menu_only_and_remove_empty_desktop(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            desktop = home / "Desktop"
+            desktop.mkdir()
+            (desktop / "DebianZFS Help.desktop").write_text("old help\n")
+            (desktop / "DebianZFS Ticket.desktop").write_text("old ticket\n")
+            env = dict(os.environ, HOME=str(home),
+                       XDG_DATA_HOME=str(home / ".local/share"))
+            subprocess.run(["bash", str(CONFIG / "scripts/help-shortcuts/deploy.sh")],
+                           env=env, check=True, capture_output=True, text=True)
+
+            self.assertFalse(desktop.exists())
+            applications = home / ".local/share/applications"
+            self.assertEqual({path.name for path in applications.glob("*.desktop")},
+                             {"debianzfs-help.desktop", "debianzfs-ticket.desktop"})
+            self.assertTrue((applications / "debianzfs-help.desktop").is_file())
+            self.assertTrue((applications / "debianzfs-ticket.desktop").is_file())
 
     def test_live_lock_override_changes_only_the_lock_setting(self):
         original = '''[idle.behavior.lock]

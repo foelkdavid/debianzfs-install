@@ -17,9 +17,10 @@ configuration through Noctalia's network panel. The image restores
 Noctalia auto-lock is disabled for the autologin live user. **DebianZFS Help**
 opens the documentation site, and **DebianZFS Ticket** opens the pre-labeled
 GitHub issue form; both have bundled icons and are also installed in the
-system built by the installer. A live-only **DebianZFS Install** desktop
-shortcut opens the installer in Alacritty and leaves the terminal open when it
-exits.
+system built by the installer. A live-only **DebianZFS Install** application
+launcher opens the installer in Alacritty and leaves the terminal open when it
+exits. It is available from the Hyprland app launcher and is not placed in a
+desktop folder.
 
 The image also contains the installer and a tarball for debootstrap's Debian
 base packages. During installation, the ISO is mounted read-only into the
