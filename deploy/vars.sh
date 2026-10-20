@@ -34,7 +34,7 @@ PACKAGES=(
 
 # Explicit backports requests; graphics/audio companions can follow their libraries.
 BACKPORTS_PACKAGES=(
-    hyprland hyprland-guiutils xdg-desktop-portal-hyprland
+    hyprland hyprland-guiutils xdg-desktop-portal-hyprland libxkbcommon0 libxkbcommon-x11-0
 )
 
 # Noctalia v5 is supplied by the Trixie APT repository in its installation docs.

@@ -80,6 +80,34 @@ prepare_target_dns() {
     chmod 644 "$TARGET/etc/resolv.conf"
 }
 
+mount_bundled_apt_cache() {
+    # The purpose-built live ISO carries the package closure needed by the
+    # installer and all deployment GPU profiles. Standard Debian live media
+    # has no cache directory and continues using its configured mirrors.
+    local source=${DEBIANZFS_IMAGE_CACHE:-/opt/debianzfs-install/cache}
+    [[ -s $source/Packages && -s $source/debootstrap-trixie-amd64.tar ]] || return 0
+    install -d -m 755 "$TARGET/mnt/debianzfs-cache"
+    install -d -m 755 "$TARGET/etc/apt/preferences.d"
+    mount --bind "$source" "$TARGET/mnt/debianzfs-cache"
+    mount -o remount,bind,ro "$TARGET/mnt/debianzfs-cache"
+    IMAGE_CACHE_MOUNTED=true
+    cat > "$TARGET/etc/apt/sources.list.d/debianzfs-image-cache.list" <<'EOF'
+deb [trusted=yes] file:/mnt/debianzfs-cache ./
+EOF
+    cat > "$TARGET/etc/apt/preferences.d/debianzfs-image-cache" <<'EOF'
+Package: *
+Pin: release o=DebianZFSInstaller
+Pin-Priority: 1001
+EOF
+    printf 'Using the ISO package cache for Debian and desktop packages.\n'
+}
+
+remove_bundled_apt_cache_config() {
+    [[ ${IMAGE_CACHE_MOUNTED:-false} == true ]] || return 0
+    rm -f "$TARGET/etc/apt/sources.list.d/debianzfs-image-cache.list" \
+        "$TARGET/etc/apt/preferences.d/debianzfs-image-cache"
+}
+
 configure_networking() {
     if [[ $DEBIAN_DESKTOP == true ]]; then
         chroot_run systemctl --root=/ --no-reload disable systemd-networkd.service systemd-networkd.socket systemd-networkd-wait-online.service
@@ -137,6 +165,7 @@ deploy_desktop() {
     # VM_GUEST is resolved by the live setup, never by chroot's systemd view.
     chroot_run env GPU_DRIVER="$GPU_DRIVER" VM_GUEST="$VM_GUEST" \
         VM_SOFTWARE_RENDERING="$VM_SOFTWARE_RENDERING" \
+        DEBIANZFS_APT_CACHE="$( [[ ${IMAGE_CACHE_MOUNTED:-false} == true ]] && printf /mnt/debianzfs-cache )" \
         bash "$home/.local/deploy/deploy.sh" --chroot "$DEBIAN_SUDOUSER"
 }
 
@@ -156,6 +185,7 @@ run_installation() {
         run_stage 'Deploy Hyprland desktop' deploy_desktop
     fi
     run_stage 'Configure networking' configure_networking
+    run_stage 'Remove image cache configuration' remove_bundled_apt_cache_config
     run_stage 'Configure initramfs' configure_initramfs
     run_stage 'Configure swap' setup_swap
     run_stage 'Install snapshot service' install_zfs_autosnap
@@ -179,12 +209,13 @@ cleanup_target() {
     # in EXIT and must preserve failures without abandoning safe cleanup.
     local failed=0 path
     restore_target_policy || failed=1
+    remove_bundled_apt_cache_config || failed=1
     unset USER_PASSWORD ZFS_PASSPHRASE
     if [[ -n ${WORK_DIR:-} && -f $WORK_DIR/zroot.key ]]; then
         rm -f -- "$WORK_DIR/zroot.key" || failed=1
     fi
     if [[ ${POOL_OWNED:-false} == true ]]; then
-        for path in run sys proc dev boot/efi2 boot/efi; do
+        for path in mnt/debianzfs-cache run sys proc dev boot/efi2 boot/efi; do
             if mountpoint -q "$TARGET/$path"; then
                 umount -R "$TARGET/$path" || failed=1
             fi

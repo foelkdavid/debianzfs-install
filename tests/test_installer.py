@@ -282,6 +282,52 @@ configure_networking
                     self.assertIn("mask NetworkManager.service networking.service", commands)
                     self.assertEqual((directory / "etc/systemd/network/20-wired-ipv4-dhcp.network").exists(), dhcp == "true")
 
+    def test_iso_cache_mounting_and_standard_media_fallback(self):
+        target = self.root / "target"
+        cache = self.root / "cache"
+        (target / "etc/apt/sources.list.d").mkdir(parents=True)
+        cache.mkdir()
+        (cache / "Packages").write_text("Package: fixture\n")
+        (cache / "debootstrap-trixie-amd64.tar").write_text("fixture\n")
+        self.bash(f'''
+TARGET={target}
+DEBIANZFS_IMAGE_CACHE={cache}
+mount() {{ printf '%s\\n' "$*" >> "$TEST_ROOT/mounts"; }}
+mount_bundled_apt_cache
+[[ $IMAGE_CACHE_MOUNTED == true ]]
+''')
+        self.assertEqual((self.root / "mounts").read_text().count("--bind"), 1)
+        self.assertIn("file:/mnt/debianzfs-cache ./", (target / "etc/apt/sources.list.d/debianzfs-image-cache.list").read_text())
+        self.assertIn("Pin-Priority: 1001", (target / "etc/apt/preferences.d/debianzfs-image-cache").read_text())
+        self.bash(f'''
+TARGET={target}
+IMAGE_CACHE_MOUNTED=true
+remove_bundled_apt_cache_config
+''')
+        self.assertFalse((target / "etc/apt/sources.list.d/debianzfs-image-cache.list").exists())
+        self.assertFalse((target / "etc/apt/preferences.d/debianzfs-image-cache").exists())
+
+    def test_image_package_manifest_tracks_gpu_profiles(self):
+        def manifest(*args):
+            return set(subprocess.check_output(
+                ["bash", str(REPO / "image/package-manifest.sh"), *args], text=True
+            ).splitlines())
+
+        for profile, array in (("intel", "INTEL_PACKAGES"), ("amd", "AMD_PACKAGES"),
+                               ("nvidia", "NVIDIA_PACKAGES"), ("nouveau", "NOUVEAU_PACKAGES"),
+                               ("vm", "VM_PACKAGES")):
+            expected = subprocess.check_output(
+                ["bash", "-c", f'source "$1/deploy/vars.sh"; printf "%s\\n" "${{{array}[@]}}"', "test", str(REPO)],
+                text=True,
+            ).splitlines()
+            selected = manifest("cache", profile)
+            for package in expected:
+                self.assertIn(package, selected)
+        self.assertNotIn("linux-image-amd64", manifest("cache", "nvidia"))
+        self.assertIn("hyprland/trixie-backports", manifest("live"))
+        self.assertIn("libxkbcommon-x11-0/trixie-backports", manifest("live"))
+        self.assertNotIn("libxkbcommon0", manifest("base"))
+
     def test_mirrored_esp_mounts_allow_a_missing_disk(self):
         self.bash('''
 TARGET="$TEST_ROOT/target"

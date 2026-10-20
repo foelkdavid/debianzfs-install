@@ -195,7 +195,14 @@ install_base_system() {
     mkdir -p "$TARGET/usr/sbin"
     install_target_policy
     DEBIAN_ARCH="${DEBIAN_ARCH:-$(dpkg --print-architecture)}"
-    debootstrap --arch="$DEBIAN_ARCH" --components="${DEBIAN_COMPONENTS// /,}" "$DEBIAN_RELEASE" "${TARGET}" "$DEBIAN_MIRROR"
+    local bootstrap_tarball=/opt/debianzfs-install/cache/debootstrap-trixie-amd64.tar
+    if [[ -s $bootstrap_tarball ]]; then
+        debootstrap --unpack-tarball="$bootstrap_tarball" --arch="$DEBIAN_ARCH" \
+            --components="${DEBIAN_COMPONENTS// /,}" "$DEBIAN_RELEASE" "${TARGET}" "$DEBIAN_MIRROR"
+    else
+        debootstrap --arch="$DEBIAN_ARCH" --components="${DEBIAN_COMPONENTS// /,}" \
+            "$DEBIAN_RELEASE" "${TARGET}" "$DEBIAN_MIRROR"
+    fi
     ok "Installed Debian base system"
 
     mkdir -p "${TARGET}/etc/apt/sources.list.d" "${TARGET}/etc/zfs" "${TARGET}/etc/initramfs-tools/conf.d" "${TARGET}/etc/initramfs-tools/hooks"
@@ -211,6 +218,7 @@ EOF
 
     mount_chroot_filesystems
     prepare_target_dns
+    mount_bundled_apt_cache
     chroot_run apt-get update
     apt_install_target openssl mokutil
     apt_install_target linux-image-amd64 linux-headers-amd64 dkms zfs-dkms \

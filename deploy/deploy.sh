@@ -170,13 +170,17 @@ python3 "$REPO_DIR/scripts/debian-sources.py" /etc/apt > "$WORK_DIR/debian-deplo
 as_root install -m 644 "$WORK_DIR/debian-deploy.sources" /etc/apt/sources.list.d/debian-deploy.sources
 
 printf 'Preparing the Noctalia repository...\n'
-curl --fail --location --retry 3 --output "$WORK_DIR/nickh-archive-keyring.deb" \
-    https://pkg.noctalia.dev/deb/nickh-archive-keyring.deb
-curl --fail --location --retry 3 --output "$WORK_DIR/noctalia-trixie.sources" \
-    https://pkg.noctalia.dev/deb/noctalia-trixie.sources
-[[ -s "$WORK_DIR/noctalia-trixie.sources" ]] || die "The Noctalia repository definition is empty."
-as_root dpkg -i "$WORK_DIR/nickh-archive-keyring.deb"
-as_root install -m 644 "$WORK_DIR/noctalia-trixie.sources" /etc/apt/sources.list.d/noctalia-trixie.sources
+if [[ -n ${DEBIANZFS_APT_CACHE:-} && -s /etc/apt/sources.list.d/debianzfs-image-cache.list ]]; then
+    printf 'Using the package repository bundled with the live image.\n'
+else
+    curl --fail --location --retry 3 --output "$WORK_DIR/nickh-archive-keyring.deb" \
+        https://pkg.noctalia.dev/deb/nickh-archive-keyring.deb
+    curl --fail --location --retry 3 --output "$WORK_DIR/noctalia-trixie.sources" \
+        https://pkg.noctalia.dev/deb/noctalia-trixie.sources
+    [[ -s "$WORK_DIR/noctalia-trixie.sources" ]] || die "The Noctalia repository definition is empty."
+    as_root dpkg -i "$WORK_DIR/nickh-archive-keyring.deb"
+    as_root install -m 644 "$WORK_DIR/noctalia-trixie.sources" /etc/apt/sources.list.d/noctalia-trixie.sources
+fi
 as_root apt-get update
 
 # Keep applications on their normal candidates (including security updates).
@@ -194,7 +198,12 @@ for package in "${PACKAGES[@]}" "${GPU_PACKAGES[@]}" "${NOCTALIA_PACKAGES[@]}"; 
     INSTALL_PACKAGES+=("$package=$candidate")
 done
 BACKPORTS_REQUESTS=()
-for package in "${BACKPORTS_PACKAGES[@]}"; do BACKPORTS_REQUESTS+=("$package/trixie-backports"); done
+for package in "${BACKPORTS_PACKAGES[@]}"; do
+    backports_version=$(LC_ALL=C apt-cache madison "$package" |
+        awk -F '|' '$3 ~ /trixie-backports/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit}')
+    [[ -n $backports_version ]] || die "No Trixie backports candidate for $package. Check the configured repositories."
+    BACKPORTS_REQUESTS+=("$package=$backports_version")
+done
 INSTALL_PACKAGES+=("${BACKPORTS_REQUESTS[@]}")
 # Simulate the exact transaction before changing desktop packages or configs.
 as_root apt-get --simulate -t trixie-backports install --no-install-recommends "${INSTALL_PACKAGES[@]}"

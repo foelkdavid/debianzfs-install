@@ -133,7 +133,21 @@ try_load_zfs() {
     return "$result"
 }
 
+live_image_prerequisites_ready() {
+    local tool
+    for tool in zgenhostid zpool zfs debootstrap sgdisk wipefs partprobe udevadm \
+        mkfs.vfat rsync chroot runuser blkid findmnt lsblk blockdev flock curl fuser \
+        swapon mountpoint modprobe; do
+        command -v "$tool" >/dev/null || return 1
+    done
+    modprobe zfs >/dev/null 2>&1 && [[ -d /sys/module/zfs ]]
+}
+
 install_host_requirements() {
+    if live_image_prerequisites_ready; then
+        printf 'Installer tools and the ZFS kernel module are already available.\n'
+        return 0
+    fi
     printf 'Preparing packages in the live environment only.\n'
     cat > "$HOST_APT_SOURCE" <<EOF
 deb $DEBIAN_MIRROR $DEBIAN_RELEASE $DEBIAN_COMPONENTS

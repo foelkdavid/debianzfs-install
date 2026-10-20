@@ -2,13 +2,51 @@
 
 An interactive, all-in-one Debian 13 Trixie installer for amd64 UEFI systems,
 with optional Hyprland and Noctalia deployment. Based on
-[voidzfs-install](https://github.com/foelkdavid/voidzfs-install). Run it from an official Debian
-13 **live** image, with internet access:
+[voidzfs-install](https://github.com/foelkdavid/voidzfs-install). The recommended
+way to use it is the prebuilt live image; standard Debian 13 live media remains
+supported too.
+
+## Prebuilt live image
+
+Every `v*` tag builds an amd64 UEFI live ISO and publishes it with a SHA-256
+checksum to a [GitHub Release](https://github.com/foelkdavid/debianzfs-install/releases).
+The ISO boots into the bundled Hyprland/Noctalia desktop and includes the
+installer, ZFS tools and module, a Debian bootstrap archive, and an APT package
+repository containing the current desktop packages for all five GPU profiles.
+This keeps the live desktop and installed desktop sourced from this repository
+while letting target setup reuse packages from the ISO. Remaining network work
+such as refreshing repository metadata, fonts/plugins and ZFSBootMenu still
+requires internet access.
+
+Log into the live desktop, open a terminal and run this command from any
+directory:
+
+```sh
+debianzfs-install
+```
+
+The command launches the bundled installer with root privileges. Secure Boot
+must be disabled. Installation remains interactive and erases disks only after
+you confirm **Start installation**.
+
+If GitHub splits an ISO into assets, download every `debianzfs-live-amd64.iso.part.*`
+file into one directory and reconstruct it before checking the checksum:
+
+```sh
+cat debianzfs-live-amd64.iso.part.* > debianzfs-live-amd64.iso
+sha256sum -c SHA256SUMS
+```
+
+The image build and package manifest live in [`image/`](image/README.md).
+
+## Standard Debian live media
+
+Run it from an official Debian 13 **live** image, with internet access:
 
 ```sh
 sudo apt-get update
 sudo apt-get install git ca-certificates curl
-git clone --branch v1.0.0 https://github.com/foelkdavid/debianzfs-install
+git clone https://github.com/foelkdavid/debianzfs-install
 cd debianzfs-install
 sudo ./install.sh
 ```

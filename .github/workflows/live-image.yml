@@ -1,0 +1,66 @@
+name: Build Debian ZFS live image
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+
+      - name: Build Debian 13 live image
+        run: |
+          docker run --rm --privileged \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --workdir /workspace \
+            debian:trixie-slim \
+            bash /workspace/image/build.sh
+
+      - name: Prepare release assets
+        id: release-assets
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p release-assets
+          cp dist/debianzfs-live-amd64.iso dist/SHA256SUMS release-assets/
+          size=$(stat -c %s release-assets/debianzfs-live-amd64.iso)
+          if ((size >= 1900 * 1024 * 1024)); then
+            mv release-assets/debianzfs-live-amd64.iso release-assets/debianzfs-live-amd64.iso.full
+            split --bytes=1800M --numeric-suffixes=0 --suffix-length=3 \
+              release-assets/debianzfs-live-amd64.iso.full \
+              release-assets/debianzfs-live-amd64.iso.part.
+            rm release-assets/debianzfs-live-amd64.iso.full
+            cat > release-assets/REASSEMBLE.txt <<'EOF'
+          The ISO was split into GitHub Release assets to meet the per-file size limit.
+          Put every debianzfs-live-amd64.iso.part.* file in one directory and run:
+
+              cat debianzfs-live-amd64.iso.part.* > debianzfs-live-amd64.iso
+              sha256sum -c SHA256SUMS
+          EOF
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: debianzfs-live-${{ github.ref_name }}
+          path: |
+            dist/debianzfs-live-amd64.iso
+            dist/SHA256SUMS
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release-assets/* \
+            --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
