@@ -235,20 +235,36 @@ apt_install_target() {
     chroot_run apt-get install -y --no-install-recommends "$@"
 }
 
+bootstrap_debian() {
+    local bootstrap_tarball=$1
+    local -a options=(--arch="$DEBIAN_ARCH" --components="${DEBIAN_COMPONENTS// /,}")
+    # The image archive contains APT lists named for deb.debian.org/debian.
+    # debootstrap --unpack-tarball does not rename those lists for a different
+    # mirror: setup_available then fails with exit 2 after configuring libc-bin.
+    if [[ -s $bootstrap_tarball && ${DEBIAN_MIRROR%/} == https://deb.debian.org/debian ]]; then
+        options+=(--unpack-tarball="$bootstrap_tarball")
+    else
+        info 'Downloading bootstrap packages from the selected mirror (no compatible bundled archive).'
+    fi
+    local result=0
+    debootstrap "${options[@]}" "$DEBIAN_RELEASE" "$TARGET" "$DEBIAN_MIRROR" || result=$?
+    if ((result)); then
+        # Include the detail before failure cleanup exports the target pool.
+        printf 'debootstrap failed (exit %s). Bootstrap log (cached archives may include build-time entries):\n' "$result" >&2
+        if [[ -f $TARGET/debootstrap/debootstrap.log ]]; then
+            tail -80 "$TARGET/debootstrap/debootstrap.log" >&2 || true
+        fi
+    fi
+    return "$result"
+}
+
 install_base_system() {
     info "[Installing Debian base system]"
     # debootstrap's second stage and all APT operations inherit this policy.
     mkdir -p "$TARGET/usr/sbin"
     install_target_policy
     DEBIAN_ARCH="${DEBIAN_ARCH:-$(dpkg --print-architecture)}"
-    local bootstrap_tarball=/opt/debianzfs-install/cache/debootstrap-trixie-amd64.tar
-    if [[ -s $bootstrap_tarball ]]; then
-        debootstrap --unpack-tarball="$bootstrap_tarball" --arch="$DEBIAN_ARCH" \
-            --components="${DEBIAN_COMPONENTS// /,}" "$DEBIAN_RELEASE" "${TARGET}" "$DEBIAN_MIRROR"
-    else
-        debootstrap --arch="$DEBIAN_ARCH" --components="${DEBIAN_COMPONENTS// /,}" \
-            "$DEBIAN_RELEASE" "${TARGET}" "$DEBIAN_MIRROR"
-    fi
+    bootstrap_debian /opt/debianzfs-install/cache/debootstrap-trixie-amd64.tar
     ok "Installed Debian base system"
 
     mkdir -p "${TARGET}/etc/apt/sources.list.d" "${TARGET}/etc/zfs" "${TARGET}/etc/initramfs-tools/conf.d" "${TARGET}/etc/initramfs-tools/hooks"

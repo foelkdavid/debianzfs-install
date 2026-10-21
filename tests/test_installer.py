@@ -65,6 +65,43 @@ printf 'RESULT:%s,%s\\n' "$DEBIAN_DESKTOP" "${GPU_DRIVER:-unset}"
         self.assertIn("RESULT:false,unset", output)
         self.assertNotIn("UNEXPECTED-CHROOT", output)
 
+    def test_bootstrap_cache_requires_matching_mirror(self):
+        for mirror, cached in (("https://deb.debian.org/debian", True),
+                               ("https://deb.debian.org/debian/", True),
+                               ("https://ftp.de.debian.org/debian", False),
+                               ("https://deb.debian.org/debian-other", False)):
+            with self.subTest(mirror=mirror):
+                output = self.bash('''
+TARGET="$TEST_ROOT/target"
+DEBIAN_ARCH=amd64
+printf fixture > "$TEST_ROOT/bootstrap.tar"
+debootstrap() { printf 'ARG:%s\\n' "$@"; }
+''' + f'DEBIAN_MIRROR={mirror}\n' + '''
+bootstrap_debian "$TEST_ROOT/bootstrap.tar"
+''')
+                self.assertEqual("ARG:--unpack-tarball=" in output, cached)
+                self.assertIn("ARG:" + mirror, output)
+        self.bash('''
+DEBIAN_ARCH=amd64
+DEBIAN_MIRROR=https://ftp.de.debian.org/debian
+debootstrap() { return 2; }
+bootstrap_debian "$TEST_ROOT/missing.tar"
+echo MUST-NOT-RUN
+''', expected=2)
+
+    def test_bootstrap_failure_reports_detail_and_preserves_status(self):
+        output = self.bash('''
+TARGET="$TEST_ROOT/target"
+DEBIAN_ARCH=amd64
+mkdir -p "$TARGET/debootstrap"
+printf 'fixture dpkg error\\n' > "$TARGET/debootstrap/debootstrap.log"
+debootstrap() { return 2; }
+bootstrap_debian "$TEST_ROOT/missing.tar"
+echo MUST-NOT-RUN
+''', expected=2)
+        self.assertIn("fixture dpkg error", output)
+        self.assertNotIn("MUST-NOT-RUN", output)
+
     def test_restart_clears_every_answer_and_secret(self):
         self.bash('''
 for key in DEBIAN_DISK1 DEBIAN_DISK2 DEBIAN_MIRROR_MODE DEBIAN_SWAPSIZE DEBIAN_HOSTNAME DEBIAN_SUDOUSER DEBIAN_TIMEZONE DEBIAN_KEYMAP DEBIAN_DESKTOP GPU_DRIVER VM_GUEST VM_SOFTWARE_RENDERING DEBIAN_ENCRYPTION USER_PASSWORD ZFS_PASSPHRASE INSTALL_CONFIRMED; do

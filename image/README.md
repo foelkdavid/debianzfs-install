@@ -37,6 +37,11 @@ unlock screens before Plymouth starts; no ZFSBootMenu EFI image is customized.
 Graphical output depends on the firmware/framebuffer and GPU driver. Preparing
 these files does not update an existing ISO; rebuild the image to include them.
 
+When installing with a custom Debian mirror, the installer downloads a fresh
+bootstrap from that mirror. The bundled bootstrap archive is only used with
+its matching `https://deb.debian.org/debian` mirror; its APT indexes cannot be
+reused with a different mirror hostname or path.
+
 The image also contains the installer and a tarball for debootstrap's Debian
 base packages. During installation, the ISO is mounted read-only into the
 target chroot and APT pins its matching package repository, so base, kernel,
