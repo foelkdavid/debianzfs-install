@@ -9,6 +9,7 @@ BASE_PACKAGES=(
     debootstrap gdisk dosfstools rsync inotify-tools parted util-linux kmod
     curl kbd psmisc console-setup keyboard-configuration xkb-data openssl mokutil
     procps zfsutils-linux zfs-dkms zfs-initramfs zfs-zed dkms
+    firmware-iwlwifi firmware-realtek
     sudo locales efibootmgr systemd-sysv systemd-resolved plymouth plymouth-themes
 )
 LIVE_PACKAGES=(

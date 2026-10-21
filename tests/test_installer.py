@@ -102,6 +102,29 @@ echo MUST-NOT-RUN
         self.assertIn("fixture dpkg error", output)
         self.assertNotIn("MUST-NOT-RUN", output)
 
+    def test_network_firmware_installed_for_clean_and_desktop(self):
+        for desktop in ("false", "true"):
+            with self.subTest(desktop=desktop):
+                output = self.bash(f'DEBIAN_DESKTOP={desktop}\n' + '''
+TARGET="$TEST_ROOT/target"
+DEBIAN_ARCH=amd64
+DEBIAN_ENCRYPTION=false
+install_target_policy() { :; }
+bootstrap_debian() { :; }
+mount_chroot_filesystems() { :; }
+prepare_target_dns() { :; }
+mount_bundled_apt_cache() { :; }
+chroot_run() { :; }
+apt_install_target() { printf 'PACKAGE:%s\\n' "$@"; }
+install_base_system
+''')
+                for package in ("firmware-iwlwifi", "firmware-realtek"):
+                    self.assertIn("PACKAGE:" + package, output)
+        packages = subprocess.check_output(
+            ["bash", str(REPO / "image/package-manifest.sh"), "base"], text=True).splitlines()
+        self.assertIn("firmware-iwlwifi", packages)
+        self.assertIn("firmware-realtek", packages)
+
     def test_restart_clears_every_answer_and_secret(self):
         self.bash('''
 for key in DEBIAN_DISK1 DEBIAN_DISK2 DEBIAN_MIRROR_MODE DEBIAN_SWAPSIZE DEBIAN_HOSTNAME DEBIAN_SUDOUSER DEBIAN_TIMEZONE DEBIAN_KEYMAP DEBIAN_DESKTOP GPU_DRIVER VM_GUEST VM_SOFTWARE_RENDERING DEBIAN_ENCRYPTION USER_PASSWORD ZFS_PASSPHRASE INSTALL_CONFIRMED; do

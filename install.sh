@@ -285,6 +285,7 @@ EOF
     apt_install_target openssl mokutil
     apt_install_target linux-image-amd64 linux-headers-amd64 dkms zfs-dkms \
         zfsutils-linux zfs-initramfs zfs-zed \
+        firmware-iwlwifi firmware-realtek \
         sudo locales console-setup keyboard-configuration efibootmgr dosfstools \
         rsync inotify-tools util-linux kmod systemd-sysv plymouth plymouth-themes
     chroot_run zgenhostid -f
