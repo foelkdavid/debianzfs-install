@@ -97,8 +97,8 @@ pool_partition_ready() {
 
 resolve_pool_device() {
     local device=$1 uuid alias attempt
-    # A fresh partition can appear after partprobe/udevadm return. Probe the
-    # GPT metadata directly: normal blkid output can omit PARTUUID or be stale.
+    # Wait for the kernel partition, not blkid: old filesystem signatures can
+    # make even an uncached UUID probe fail on a freshly repartitioned disk.
     for ((attempt = 0; attempt < 40; attempt++)); do
         if pool_partition_ready "$device"; then
             uuid=$(blkid --probe --match-tag PART_ENTRY_UUID --output value "$device" 2>/dev/null) || uuid=''
@@ -107,17 +107,21 @@ resolve_pool_device() {
                 if [[ -b $alias && $alias -ef $device ]]; then
                     printf '%s\n' "$alias"
                 else
-                    # ZFS also identifies vdevs by their on-disk GUIDs. A late
-                    # udev alias must not prevent using the verified partition.
                     info "PARTUUID link is not ready; using verified partition $device." >&2
                     printf '%s\n' "$device"
                 fi
                 return 0
             fi
+            # ZFS imports vdevs by their on-disk GUIDs. A PARTUUID alias is
+            # convenient, but is not required to create or import the pool.
+            info "PARTUUID probe unavailable; using verified partition $device." >&2
+            printf '%s\n' "$device"
+            return 0
         fi
         sleep .25
     done
-    failhard "No block partition with a readable GPT UUID appeared for $device within 10 seconds."
+    failhard "No block partition appeared for $device within 10 seconds."
+    lsblk --paths --output NAME,TYPE,SIZE,FSTYPE,PARTUUID >&2 || true
     return 1
 }
 
@@ -138,6 +142,15 @@ create_zpool() {
         vdevs=(mirror "$first" "$second")
     else
         vdevs=("$first")
+    fi
+
+    # Wiping a disk's partition table does not clear filesystem/RAID signatures
+    # inside its former partitions. Clear only our verified ZFS partitions,
+    # after resolving and checking every mirror member and before pool creation.
+    info "[Clearing previous signatures from ZFS partitions]"
+    wipefs --all "$first" || return
+    if [[ ${DEBIAN_MIRROR_MODE:-false} == true ]]; then
+        wipefs --all "$second" || return
     fi
 
     local common_opts=(

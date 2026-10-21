@@ -249,12 +249,17 @@ DEBIAN_MIRROR_MODE={mirrored}
 POOL_DEVICE_1=/dev/mock-a2
 POOL_DEVICE_2=/dev/mock-b2
 zpool() {{ printf 'zpool:%s\\n' "$*"; }}
+wipefs() {{ printf 'wipefs:%s\\n' "$*"; }}
 resolve_pool_device() {{ printf '%s\\n' "$1"; }}
 create_zpool
 [[ $POOL_OWNED == true ]]
 ''')
                 self.assertEqual("encryption=aes-256-gcm" in output, encrypted == "true")
                 self.assertEqual("zroot mirror" in output, mirrored == "true")
+                self.assertIn("wipefs:--all /dev/mock-a2", output)
+                self.assertEqual("wipefs:--all /dev/mock-b2" in output, mirrored == "true")
+                self.assertEqual(output.count("wipefs:"), 2 if mirrored == "true" else 1)
+                self.assertLess(output.rindex("wipefs:"), output.index("zpool:"))
 
     def test_nvme_partition_names_with_and_without_swap(self):
         for swap, partition in (("0", "2"), ("2", "3")):
@@ -266,7 +271,7 @@ printf 'DEVICES:%s,%s,%s,%s\\n' "$BOOT_DEVICE_1" "$POOL_DEVICE_1" "$BOOT_DEVICE_
 ''')
             self.assertIn(f"DEVICES:/dev/nvme0n1p1,/dev/nvme0n1p{partition},/dev/nvme1n1p1,/dev/nvme1n1p{partition}", output)
 
-    def test_fresh_partition_probe_retries_and_handles_missing_alias(self):
+    def test_fresh_partition_waits_for_block_node_and_handles_missing_alias(self):
         output = self.bash('''
 WORK_DIR="$TEST_ROOT"
 DEBIAN_ENCRYPTION=false DEBIAN_MIRROR_MODE=false
@@ -283,42 +288,50 @@ blkid() {
     local n=0
     [[ ! -f $TEST_ROOT/probe-count ]] || read -r n < "$TEST_ROOT/probe-count"
     printf '%s\\n' "$((n+1))" > "$TEST_ROOT/probe-count"
-    ((n >= 2)) || return 2
     echo 12345678-1234-1234-1234-123456789abc
 }
 sleep() { :; }
+wipefs() { [[ $* == "--all $POOL_DEVICE_1" ]]; }
 zpool() { printf 'ZPOOL:%s\\n' "$*"; [[ ${!#} == "$POOL_DEVICE_1" ]]; }
 create_zpool
 [[ $POOL_OWNED == true ]]
-[[ $(cat "$TEST_ROOT/ready-count") == 5 && $(cat "$TEST_ROOT/probe-count") == 3 ]]
+[[ $(cat "$TEST_ROOT/ready-count") == 3 && $(cat "$TEST_ROOT/probe-count") == 1 ]]
 ''')
         self.assertIn("using verified partition", output)
         self.assertIn("ZPOOL:create", output)
         self.assertNotIn("zroot /dev/disk/by-partuuid/", output)
 
-    def test_missing_or_invalid_partition_uuid_never_calls_zpool(self):
+    def test_failed_or_invalid_uuid_probe_uses_partition_and_clears_signatures(self):
         for result in ("return 2", "printf ''", "echo not-a-uuid", "echo 12345678-1234-1234-1234-123456789abc; return 8"):
             with self.subTest(result=result):
                 output = self.bash('''
 DEBIAN_ENCRYPTION=false DEBIAN_MIRROR_MODE=false
 POOL_DEVICE_1=/dev/nvme0n1p2
 pool_partition_ready() { return 0; }
-sleep() { :; }
-zpool() { echo UNEXPECTED-POOL-CREATE; }
+sleep() { echo UNEXPECTED-WAIT; }
+wipefs() { [[ $* == "--all $POOL_DEVICE_1" ]] || return 99; echo CLEARED; }
+zpool() { [[ ${!#} == "$POOL_DEVICE_1" ]] || return 99; echo CREATED; }
 blkid() { ''' + result + '''; }
 create_zpool
-''', expected=1)
-                self.assertNotIn("UNEXPECTED-POOL-CREATE", output)
-                self.assertIn("/dev/nvme0n1p2 within 10 seconds", output)
+[[ $POOL_OWNED == true ]]
+''')
+                self.assertNotIn("UNEXPECTED-WAIT", output)
+                self.assertIn("PARTUUID probe unavailable", output)
+                self.assertLess(output.index("CLEARED"), output.index("CREATED"))
+                self.assertNotIn("zroot /dev/disk/by-partuuid/", output)
+
+    def test_missing_block_partition_never_calls_wipefs_or_zpool(self):
         output = self.bash('''
 DEBIAN_ENCRYPTION=false DEBIAN_MIRROR_MODE=false
 POOL_DEVICE_1="$TEST_ROOT/missing-nvme0n1p2"
 sleep() { :; }
 blkid() { echo UNEXPECTED-PROBE; }
+wipefs() { echo UNEXPECTED-WIPE; }
 zpool() { echo UNEXPECTED-POOL-CREATE; }
 create_zpool
 ''', expected=1)
         self.assertNotIn("UNEXPECTED", output)
+        self.assertIn("No block partition appeared", output)
 
     def test_mirror_requires_both_resolved_and_distinct_partitions(self):
         fixture = '''
@@ -326,6 +339,7 @@ DEBIAN_ENCRYPTION=false DEBIAN_MIRROR_MODE=true
 POOL_DEVICE_1="$TEST_ROOT/a" POOL_DEVICE_2="$TEST_ROOT/b"
 touch "$POOL_DEVICE_1" "$POOL_DEVICE_2"
 zpool() { echo UNEXPECTED-POOL-CREATE; }
+wipefs() { echo UNEXPECTED-WIPE; }
 '''
         for code in (
             'unset POOL_DEVICE_2; resolve_pool_device() { echo "$1"; }',
@@ -335,13 +349,28 @@ zpool() { echo UNEXPECTED-POOL-CREATE; }
         ):
             with self.subTest(code=code):
                 output = self.bash(fixture + code + '\ncreate_zpool', expected=1)
-                self.assertNotIn("UNEXPECTED-POOL-CREATE", output)
+                self.assertNotIn("UNEXPECTED", output)
+
+    def test_signature_cleanup_failure_stops_before_zpool(self):
+        for mirrored, failed_device in (("false", "/dev/mock-a2"),
+                                        ("true", "/dev/mock-b2")):
+            output = self.bash(f'''
+DEBIAN_ENCRYPTION=false DEBIAN_MIRROR_MODE={mirrored} POOL_OWNED=false
+POOL_DEVICE_1=/dev/mock-a2 POOL_DEVICE_2=/dev/mock-b2
+resolve_pool_device() {{ echo "$1"; }}
+wipefs() {{ echo "WIPE:$*"; [[ $2 != {failed_device} ]] || return 19; }}
+zpool() {{ echo UNEXPECTED-POOL-CREATE; }}
+if create_zpool; then exit 99; else status=$?; fi
+[[ $status == 19 && $POOL_OWNED == false ]]
+''')
+            self.assertNotIn("UNEXPECTED-POOL-CREATE", output)
 
     def test_zpool_failure_preserves_status_and_does_not_claim_ownership(self):
         self.bash('''
 DEBIAN_ENCRYPTION=false DEBIAN_MIRROR_MODE=false POOL_OWNED=false
 POOL_DEVICE_1=/dev/nvme0n1p2
 resolve_pool_device() { echo "$1"; }
+wipefs() { :; }
 zpool() { return 17; }
 if create_zpool; then exit 99; else status=$?; fi
 [[ $status == 17 && $POOL_OWNED == false ]]

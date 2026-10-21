@@ -96,6 +96,39 @@ filesystems to the guest. A container may expose `/dev/kvm` for acceleration
 while QEMU sees only `/tmp` disk images and read-only ISO/repository mounts.
 No host installation or physical-GPU validation is implied by these tests.
 
+## Residual filesystem signatures on NVMe (2026-10-21)
+
+The UUID timeout was reproduced in a Debian live UEFI QEMU guest using two
+disposable NVMe disks. Overlapping real FAT and ext4 signatures remained after
+the installer's disk wipe and repartitioning. Both UUID probe commands failed,
+and the previous resolver timed out even though the partition was present.
+This reproduces the failure mechanism; the laptop's exact disk state has not
+been inspected.
+
+The resolver now waits for a block partition and treats its PARTUUID alias as
+optional. Pool creation clears old signatures from the verified pool partitions
+after both mirror members have been resolved and checked. Signature removal
+failures stop before pool creation and retain their exit status.
+
+- All 39 host-safe installer tests passed, including failed/empty/invalid UUID
+  lookup, missing block partitions, mirror validation before signature removal,
+  signature removal failure on either member, and pool creation failure.
+- Bash syntax and targeted ShellCheck passed for the changed installer and
+  native fixture. Checking all unchanged libraries with Debian's ShellCheck
+  also reported existing optional-argument warnings in `secure_boot_enabled`.
+- All eight native storage cases passed with conflicting signatures:
+  single/mirror × swap off/on × encryption off/on. Each case created and
+  mounted the datasets, exported/reimported, mounted again, and destroyed the
+  disposable pool. These are storage-stage tests, not complete installations
+  or physical laptop validation.
+
+`tests/nvme-storage.sh` preserves this destructive fixture for a **disposable
+UEFI Debian live QEMU guest only**. It refuses disks unless `/dev/nvme0n1`
+and `/dev/nvme1n1` have the QEMU serials `INSTALLER_TEST_A` and
+`INSTALLER_TEST_B`. Attach two new 12 GiB qcow2 NVMe disks with those serials,
+share this checkout read-only, and run the fixture inside the guest. Never run
+it on the developer's host.
+
 ## NVMe pool-device resolution (2026-10-20)
 
 - All 37 installer tests passed, including missing/invalid UUIDs, delayed block
