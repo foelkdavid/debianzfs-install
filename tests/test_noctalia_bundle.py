@@ -113,6 +113,34 @@ class NoctaliaBundleTests(unittest.TestCase):
                           (home / ".config/user-dirs.dirs").read_text())
             self.assertFalse(desktop.exists())
 
+    def test_battery_widget_placement_and_idempotence(self):
+        for original in (SETTINGS.read_text(), '''[bar.Topbar]
+end = [
+    "brightness",
+    "session"
+]
+[idle]
+enabled = true
+''', '[bar.Topbar]\nend = ["brightness"]\n'):
+            with self.subTest(original=original), tempfile.TemporaryDirectory() as temporary:
+                path = Path(temporary) / "settings.toml"
+                path.write_text(original)
+                before = tomllib.loads(original)
+                command = [sys.executable, str(REPO / "deploy/scripts/enable-battery.py"), str(path)]
+                subprocess.run(command, check=True)
+                first = path.read_text()
+                after = tomllib.loads(first)
+                widgets = after["bar"]["Topbar"]["end"]
+                self.assertEqual(widgets.count("battery"), 1)
+                if "session" in widgets:
+                    self.assertEqual(widgets.index("battery"), widgets.index("session") - 1)
+                widgets.remove("battery")
+                self.assertEqual(after, before)
+                subprocess.run(command, check=True)
+                self.assertEqual(path.read_text(), first)
+        self.assertIn('scripts/enable-battery.py',
+                      (REPO / "deploy/scripts/user-setup.sh").read_text())
+
     def test_live_lock_override_changes_only_the_lock_setting(self):
         original = '''[idle.behavior.lock]
 action = "lock"

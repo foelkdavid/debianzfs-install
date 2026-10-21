@@ -37,6 +37,11 @@ unlock screens before Plymouth starts; no ZFSBootMenu EFI image is customized.
 Graphical output depends on the firmware/framebuffer and GPU driver. Preparing
 these files does not update an existing ISO; rebuild the image to include them.
 
+Intel Wi-Fi, Realtek and MediaTek firmware are included in the live image
+and installed by default in both clean and desktop targets. Noctalia's bar
+shows the battery widget between brightness and the session menu in live
+and installed desktops (battery information requires supported hardware).
+
 When installing with a custom Debian mirror, the installer downloads a fresh
 bootstrap from that mirror. The bundled bootstrap archive is only used with
 its matching `https://deb.debian.org/debian` mirror; its APT indexes cannot be

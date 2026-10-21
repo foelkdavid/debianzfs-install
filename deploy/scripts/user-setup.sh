@@ -26,6 +26,9 @@ mkdir -p -- "$CONFIG_DIR/debian-deploy"
 ln -sfnT -- "$profile_path" "$CONFIG_DIR/debian-deploy/graphics.lua"
 
 "$CONFIG_REPO_DIR/deploy.sh"
+# Shared by installed desktops and the live image, running as the owning user.
+python3 "$REPO_DIR/scripts/enable-battery.py" \
+    "${XDG_STATE_HOME:-$HOME/.local/state}/noctalia/settings.toml"
 # Persist settings while allowing explicit environment overrides on reruns.
 mkdir -p "$STATE_DIR"
 cat > "$STATE_DIR/settings.sh" <<EOF

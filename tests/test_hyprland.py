@@ -30,6 +30,9 @@ class HyprlandTests(unittest.TestCase):
             deploy = checkout / "deploy.sh"
             deploy.write_text('#!/bin/sh\ntest "$(id -u)" != 0\n')
             deploy.chmod(0o755)
+            settings = home / ".local/state/noctalia/settings.toml"
+            settings.parent.mkdir(parents=True)
+            shutil.copyfile(CONFIG / "noctalia/settings.toml", settings)
             selection = home / ".config/debian-deploy/graphics.lua"
             selection.parent.mkdir(parents=True)
             selection.write_text("old generated configuration\n")

@@ -118,12 +118,13 @@ chroot_run() { :; }
 apt_install_target() { printf 'PACKAGE:%s\\n' "$@"; }
 install_base_system
 ''')
-                for package in ("firmware-iwlwifi", "firmware-realtek"):
+                for package in ("firmware-iwlwifi", "firmware-realtek", "firmware-mediatek"):
                     self.assertIn("PACKAGE:" + package, output)
         packages = subprocess.check_output(
             ["bash", str(REPO / "image/package-manifest.sh"), "base"], text=True).splitlines()
         self.assertIn("firmware-iwlwifi", packages)
         self.assertIn("firmware-realtek", packages)
+        self.assertIn("firmware-mediatek", packages)
 
     def test_restart_clears_every_answer_and_secret(self):
         self.bash('''
