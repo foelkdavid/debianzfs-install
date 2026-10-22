@@ -20,6 +20,17 @@ Firefox, and **DebianZFS Ticket** opens the pre-labeled GitHub issue form.
 Both launchers are available from the app menu with their bundled icons;
 deployment does not create a Desktop folder.
 
+## Debian repositories
+
+Package deployment consolidates Debian binary repositories in
+`/etc/apt/sources.list`, with all four components (`main contrib non-free
+non-free-firmware`) and the explicit Debian archive keyring on every line.
+The existing Trixie mirror is retained for Trixie and updates. Security uses
+`https://security.debian.org/debian-security`; backports uses
+`https://deb.debian.org/debian`. Older `debian-deploy.sources` supplements
+are removed, and existing Debian binary entries in `sources.list.d` are
+migrated to avoid duplicates. Unrelated repositories are preserved.
+
 ## Refreshing user configuration
 
 After `git pull`, run `~/.local/debianzfs-config/deploy.sh` as the desktop user

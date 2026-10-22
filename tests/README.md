@@ -4,10 +4,16 @@ Host-safe functional and pseudo-terminal tests (Python 3 and Bash required):
 
 ```sh
 python3 tests/test_installer.py
+python3 tests/test_debian_sources.py
 python3 tests/test_noctalia_bundle.py
 python3 tests/test_hyprland.py
 python3 tests/test_boot.py
 ```
+
+APT source fixtures check custom/default mirrors, explicit keyrings, all four
+suites/components, repeatable migration from `.list` and deb822 definitions,
+removal of the old deployment supplement, and preservation of third-party and
+offline-cache repositories. These tests do not modify host APT configuration.
 
 Terminal-emulator regressions additionally require the `pyte` Python package
 (`python3-pyte` on the Debian test system):

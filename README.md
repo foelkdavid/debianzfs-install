@@ -80,6 +80,13 @@ ZFSBootMenu uses a US keyboard for unlocking. Restart clears all answers and
 secrets. Restart and Exit do not install live prerequisites or contact package
 sources.
 
+The target keeps all four Debian binary repositories in `/etc/apt/sources.list`,
+each with `signed-by=/usr/share/keyrings/debian-archive-keyring.gpg` and
+`main contrib non-free non-free-firmware`. The chosen mirror supplies Trixie
+and Trixie updates; security uses `https://security.debian.org/debian-security`
+and backports uses `https://deb.debian.org/debian`. Desktop deployment does
+not create a separate `debian-deploy.sources` file.
+
 Choose **Run desktop deployment too? (y/n)** (default yes):
 
 - **No:** clean Debian ZFS and Bash login.

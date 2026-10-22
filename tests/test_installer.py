@@ -126,6 +126,30 @@ install_base_system
         self.assertIn("firmware-realtek", packages)
         self.assertIn("firmware-mediatek", packages)
 
+    def test_target_sources_use_selected_mirror_and_keyring(self):
+        for desktop in ("false", "true"):
+            self.bash(f'DEBIAN_DESKTOP={desktop}\n' + '''
+TARGET="$TEST_ROOT/target"
+DEBIAN_ARCH=amd64 DEBIAN_ENCRYPTION=false
+DEBIAN_MIRROR=http://debian.lagis.at/debian
+install_target_policy() { :; }
+bootstrap_debian() { :; }
+mount_chroot_filesystems() { :; }
+prepare_target_dns() { :; }
+mount_bundled_apt_cache() { :; }
+chroot_run() { :; }
+apt_install_target() { :; }
+install_base_system
+''')
+            lines = (self.root / "target/etc/apt/sources.list").read_text().splitlines()
+            self.assertEqual(len(lines), 4)
+            for line, uri, suite in zip(lines, (
+                    "http://debian.lagis.at/debian", "http://debian.lagis.at/debian",
+                    "https://security.debian.org/debian-security", "https://deb.debian.org/debian"),
+                    ("trixie", "trixie-updates", "trixie-security", "trixie-backports")):
+                self.assertEqual(line, f"deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] {uri} {suite} main contrib non-free non-free-firmware")
+            self.assertFalse((self.root / "target/etc/apt/sources.list.d/debian-deploy.sources").exists())
+
     def test_restart_clears_every_answer_and_secret(self):
         self.bash('''
 for key in DEBIAN_DISK1 DEBIAN_DISK2 DEBIAN_MIRROR_MODE DEBIAN_SWAPSIZE DEBIAN_HOSTNAME DEBIAN_SUDOUSER DEBIAN_TIMEZONE DEBIAN_KEYMAP DEBIAN_DESKTOP GPU_DRIVER VM_GUEST VM_SOFTWARE_RENDERING DEBIAN_ENCRYPTION USER_PASSWORD ZFS_PASSPHRASE INSTALL_CONFIRMED; do

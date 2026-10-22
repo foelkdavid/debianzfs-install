@@ -273,9 +273,10 @@ install_base_system() {
     fi
 
     cat >"${TARGET}/etc/apt/sources.list" <<EOF
-deb ${DEBIAN_MIRROR} ${DEBIAN_RELEASE} ${DEBIAN_COMPONENTS}
-deb ${DEBIAN_MIRROR} ${DEBIAN_RELEASE}-updates ${DEBIAN_COMPONENTS}
-deb https://security.debian.org/debian-security ${DEBIAN_RELEASE}-security ${DEBIAN_COMPONENTS}
+deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] ${DEBIAN_MIRROR} ${DEBIAN_RELEASE} main contrib non-free non-free-firmware
+deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] ${DEBIAN_MIRROR} ${DEBIAN_RELEASE}-updates main contrib non-free non-free-firmware
+deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] https://security.debian.org/debian-security ${DEBIAN_RELEASE}-security main contrib non-free non-free-firmware
+deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] https://deb.debian.org/debian ${DEBIAN_RELEASE}-backports main contrib non-free non-free-firmware
 EOF
 
     mount_chroot_filesystems

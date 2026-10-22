@@ -165,9 +165,8 @@ as_root install -m 755 "$WORK_DIR/policy" /usr/sbin/policy-rc.d
 printf 'Preparing Debian repositories...\n'
 as_root apt-get update
 as_root apt-get install -y --no-install-recommends ca-certificates curl python3
-# Fill in missing official archive components without replacing existing sources.
-python3 "$REPO_DIR/scripts/debian-sources.py" /etc/apt > "$WORK_DIR/debian-deploy.sources"
-as_root install -m 644 "$WORK_DIR/debian-deploy.sources" /etc/apt/sources.list.d/debian-deploy.sources
+# Keep Debian archives together with explicit signing keys; migrate older runs.
+as_root python3 "$REPO_DIR/scripts/debian-sources.py" /etc/apt --write
 
 printf 'Preparing the Noctalia repository...\n'
 if [[ -n ${DEBIANZFS_APT_CACHE:-} && -s /etc/apt/sources.list.d/debianzfs-image-cache.list ]]; then

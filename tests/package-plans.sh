@@ -5,7 +5,7 @@ set -Eeuo pipefail
 REPO=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 apt-get update
 apt-get install -y --no-install-recommends curl ca-certificates python3
-python3 "$REPO/deploy/scripts/debian-sources.py" /etc/apt > /etc/apt/sources.list.d/debian-deploy.sources
+python3 "$REPO/deploy/scripts/debian-sources.py" /etc/apt --write
 curl -fL https://pkg.noctalia.dev/deb/nickh-archive-keyring.deb -o /tmp/noctalia-keyring.deb
 dpkg -i /tmp/noctalia-keyring.deb
 curl -fL https://pkg.noctalia.dev/deb/noctalia-trixie.sources -o /etc/apt/sources.list.d/noctalia-trixie.sources

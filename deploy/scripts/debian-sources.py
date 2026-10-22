@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Print supplemental Debian sources; preserve existing .list and deb822 files.
+"""Consolidate Debian binary repositories in sources.list, retaining custom mirrors.
 
-The managed output is excluded from discovery so reruns retain its sources.
-Accept an APT directory argument to allow inspection with temporary fixtures.
+Print the proposed sources.list by default; --write also migrates existing Debian
+entries out of sources.list.d. Unrelated repositories are preserved.
 """
 
 import re
@@ -42,15 +42,40 @@ def entries(source_file):
                 yield [uri], [suite], components.split("#", 1)[0].split(), signed_by
 
 
-def render(apt_dir):
+ALIASES = {"stable": "trixie", "stable-updates": "trixie-updates",
+           "stable-security": "trixie-security", "stable-backports": "trixie-backports"}
+SUITES = tuple(ALIASES.values())
+KEYRING = "/usr/share/keyrings/debian-archive-keyring.gpg"
+
+
+def is_debian(uris, suites):
+    return (bool(uris) and bool(suites)
+            and all(urlparse(uri).path.rstrip("/").endswith(("/debian", "/debian-security")) for uri in uris)
+            and all(ALIASES.get(suite, suite) in SUITES for suite in suites))
+
+
+def retained_text(source_file):
+    text = source_file.read_text()
+    if source_file.suffix == ".sources":
+        blocks = re.split(r"\n\s*\n", text)
+        retained = [block for block in blocks
+                    if not any(is_debian(uris, suites) for uris, suites, _, _ in stanzas(block))]
+        return text if retained == blocks else "\n\n".join(retained).rstrip() + "\n"
+    lines = []
+    for line in text.splitlines(keepends=True):
+        match = re.match(r"^\s*deb\s+(?:\[[^]]*\]\s+)?(\S+)\s+(\S+)\s+", line)
+        if not match or not is_debian([match[1]], [match[2]]):
+            lines.append(line)
+    return "".join(lines)
+
+
+def render(apt_dir, write=False):
     suites = {
         "trixie": "https://deb.debian.org/debian",
         "trixie-updates": "https://deb.debian.org/debian",
-        "trixie-security": "https://deb.debian.org/debian-security",
+        "trixie-security": "https://security.debian.org/debian-security",
         "trixie-backports": "https://deb.debian.org/debian",
     }
-    aliases = {"stable": "trixie", "stable-updates": "trixie-updates", "stable-security": "trixie-security", "stable-backports": "trixie-backports"}
-    available = {suite: set() for suite in suites}
     archive_settings = {}
     sources = [apt_dir / "sources.list"]
     sources += sorted((apt_dir / "sources.list.d").glob("*.list"))
@@ -58,31 +83,39 @@ def render(apt_dir):
     for source_file in sources:
         if not source_file.is_file() or source_file.name == "debian-deploy.sources":
             continue
-        for uris, source_suites, components, signed_by in entries(source_file):
-            # Only count Debian archive paths; third-party suites can share names.
-            archive_uris = [uri for uri in uris if urlparse(uri).path.rstrip("/").endswith(("/debian", "/debian-security"))]
-            if not archive_uris:
-                continue
-            for source_suite in source_suites:
-                suite = aliases.get(source_suite, source_suite)
-                if suite in available:
-                    available[suite].update(components)
-                    archive_settings.setdefault(suite, (archive_uris[0], source_suite, signed_by))
+        for uris, source_suites, _, _ in entries(source_file):
+            if is_debian(uris, source_suites):
+                for source_suite in source_suites:
+                    archive_settings.setdefault(ALIASES.get(source_suite, source_suite), uris[0])
 
-    output = ["# Managed by debian-deploy; existing APT sources are preserved.\n"]
-    for suite, uri in suites.items():
-        missing = [component for component in ("main", "contrib", "non-free", "non-free-firmware") if component not in available[suite]]
-        if not missing:
-            continue
-        # Reuse the mirror, suite spelling and signing settings. In particular,
-        # adding a different Signed-By to an existing URI/suite breaks APT.
-        source_uri, source_suite, signed_by = archive_settings.get(suite, (uri, suite, "/usr/share/keyrings/debian-archive-keyring.gpg"))
-        stanza = f"Types: deb\nURIs: {source_uri}\nSuites: {source_suite}\nComponents: {' '.join(missing)}\n"
-        if signed_by is not None:
-            stanza += f"Signed-By: {signed_by}\n"
-        output.append(stanza)
-    return "\n".join(output)
+    # The selected main mirror also supplies updates. Security and backports
+    # deliberately use the official endpoints, independently of that mirror.
+    mirror = archive_settings.get("trixie", suites["trixie"])
+    suites["trixie"] = suites["trixie-updates"] = mirror
+    main = apt_dir / "sources.list"
+    retained = retained_text(main) if main.is_file() else ""
+    output = retained.rstrip() + "\n\n" if retained.strip() else ""
+    output += "".join(
+        f"deb [signed-by={KEYRING}] {uri} {suite} main contrib non-free non-free-firmware\n"
+        for suite, uri in suites.items())
+    if write:
+        # Calculate all edits before modifying files. Never touch third-party
+        # definitions (including the installer's temporary offline repository).
+        changes = {source: retained_text(source) for source in sources
+                   if source.is_file() and source != main
+                   and source.name != "debian-deploy.sources"}
+        main.write_text(output)
+        main.chmod(0o644)
+        for source, text in changes.items():
+            if text != source.read_text():
+                if text.strip():
+                    source.write_text(text)
+                else:
+                    source.unlink()
+        (apt_dir / "sources.list.d/debian-deploy.sources").unlink(missing_ok=True)
+    return output
 
 
 if __name__ == "__main__":
-    print(render(Path(sys.argv[1]) if len(sys.argv) > 1 else Path("/etc/apt")), end="")
+    args = [arg for arg in sys.argv[1:] if arg != "--write"]
+    print(render(Path(args[0]) if args else Path("/etc/apt"), write="--write" in sys.argv), end="")
